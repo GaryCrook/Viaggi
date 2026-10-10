@@ -1,0 +1,186 @@
+// The world: a region pack turned into a queryable timetable.
+//
+// Each transport mode is a provider that returns recurring "services"
+// (carrier X runs A -> B, N times a day). The world turns services into dated
+// departures on demand. To add ferries, coaches or a live API snapshot,
+// register another provider here – nothing else in the game needs to change.
+
+import { rand, hash, distKm, round5, MIN, local, localToUtc } from './util.js';
+
+const SEASON = [0.8, 0.8, 0.9, 1.0, 1.05, 1.2, 1.5, 1.5, 1.15, 1.0, 0.85, 1.2];   // Jan..Dec
+const FIRST_DEP = 6 * 60, LAST_DEP = 21 * 60 + 30;                                   // local minutes
+
+function timeOfDay(minutes) {
+  if (minutes < 7 * 60) return 0.8;
+  if (minutes < 9 * 60 + 30) return 1.2;
+  if (minutes >= 16 * 60 + 30 && minutes < 19 * 60 + 30) return 1.2;
+  if (minutes >= 20 * 60) return 0.85;
+  return 1;
+}
+
+function inScope({ rail: scope = 'international', domestic = [] }, A, B, majorOnly) {
+  if (A.country === B.country) return scope === A.country || domestic.includes(A.country);
+  return scope === 'international' && (!majorOnly || (A.tier <= 2 && B.tier <= 2));
+}
+
+const PROVIDERS = {
+  air(region, cities) {
+    const out = [], seen = new Set();
+    for (const carrier of region.carriers) {
+      for (const [hubId, reach] of Object.entries(carrier.hubs)) {
+        const hub = cities.get(hubId);
+        for (const c of region.cities) {
+          if (c.id === hubId || c.railOnly) continue;
+          const pair = `${carrier.code}-${[hubId, c.id].sort().join('-')}`;
+          if (seen.has(pair)) continue;
+          const km = distKm(hub, c);
+          if (km < 220) continue;                       // too short to fly
+          const network = carrier.type === 'network';
+          const p = network ? (c.tier === 1 ? Math.min(1, reach * 2) : c.tier === 2 ? reach : reach * 0.8)
+                            : reach * (c.tier === 1 ? 1.3 : 1);
+          if (rand(`route|${carrier.code}|${hubId}|${c.id}`) >= p) continue;
+          seen.add(pair);
+          const freq = network
+            ? Math.max(1, 5 - c.tier - hub.tier - (reach < 0.5 ? 1 : 0))
+            : (hub.tier === 1 && c.tier === 1 ? 2 : 1);
+          const base = {
+            mode: 'air', carrier, freq, km, pair,
+            dayP: network ? 1 : 0.7,                    // low-cost routes don't fly every day
+            durMin: round5(35 + (km / 800) * 60),
+            fare: (tod, season, scarcity) =>
+              (15 + 0.35 * km ** 0.8) * season * tod * scarcity * (network ? 1.15 : 0.65),
+          };
+          out.push({ ...base, from: hubId, to: c.id }, { ...base, from: c.id, to: hubId });
+        }
+      }
+    }
+    return out;
+  },
+
+  // scope 'international': only cross-border trains between major cities.
+  // scope 'IT' (any country code): only that country's domestic network.
+  // `domestic` opens the full home network of the listed countries inside an
+  // international game, e.g. ['ES'] for a journey from London into Spain.
+  rail(region, cities, opts = {}) {
+    const out = [];
+    for (const [a, b, durMin, freq, code, name, premium, sleeper] of region.rail || []) {
+      const A = cities.get(a), B = cities.get(b);
+      if (!inScope(opts, A, B, true)) continue;
+      const base = {
+        mode: 'rail', carrier: { code, name, type: 'rail' }, freq, km: distKm(A, B), pair: `${code}-${a}-${b}`,
+        dayP: 1, durMin, sleeper: !!sleeper, perWeek: sleeper ? [sleeper, sleeper] : null,
+        cabin: Math.round(35 * ((A.idx + B.idx) / 2)),
+        // A sleeper is slow for its distance, so it is priced well below a day train of the same length.
+        fare: (tod, _season, scarcity) =>
+          (8 + 0.28 * (sleeper ? durMin * 0.45 : durMin)) * ((A.idx + B.idx) / 2) * tod * (1 + (scarcity - 1) * 0.6) * (premium ? 1.7 : 1),
+      };
+      out.push({ ...base, from: a, to: b }, { ...base, from: b, to: a, back: true });
+    }
+    return out;
+  },
+
+  // Ferries follow the same scope as rail. `perWeek` holds summer and winter sailings.
+  ferry(region, cities, opts = {}) {
+    const out = [];
+    for (const [a, portA, shuttleA, b, portB, shuttleB, durMin, summer, winter, code, name] of region.ferries || []) {
+      const A = cities.get(a), B = cities.get(b);
+      if (!inScope(opts, A, B, false)) continue;
+      const base = {
+        mode: 'ferry', carrier: { code, name, type: 'ferry' }, km: distKm(A, B), pair: `${code}-${a}-${b}`,
+        perWeek: [summer, winter], durMin, cabin: Math.round(30 * ((A.idx + B.idx) / 2)),
+        fare: (_tod, season, scarcity) => (12 + 0.04 * durMin) * (season > 1.1 ? 1.3 : 1) * (1 + (scarcity - 1) * 0.5),
+      };
+      out.push({ ...base, from: a, to: b, port: portA, shuttle: shuttleA, portTo: portB, shuttleTo: shuttleB },
+        { ...base, from: b, to: a, port: portB, shuttle: shuttleB, portTo: portA, shuttleTo: shuttleA, back: true });
+    }
+    return out;
+  },
+};
+
+const SUMMER = [5, 6, 7, 8, 9];
+
+// Local departure times (minutes after midnight) for one service on one day.
+function slots(s, month, dow) {
+  if (!s.perWeek) {
+    const jitter = rand(`slot|${s.pair}|${s.from}`);
+    return Array.from({ length: s.freq }, (_, i) => round5(FIRST_DEP + ((i + jitter) / s.freq) * (LAST_DEP - FIRST_DEP)));
+  }
+  const perWeek = s.perWeek[SUMMER.includes(month) ? 0 : 1];
+  if (!perWeek) return [];
+  if (perWeek < 7) {
+    // A few sailings a week: fixed weekdays, the ship returning the day after it arrives.
+    const offset = (hash(`days|${s.pair}`) + (s.back ? 1 + Math.ceil(s.durMin / 1440) : 0)) % 7;
+    const days = Array.from({ length: perWeek }, (_, k) => (offset + Math.floor((k * 7) / perWeek)) % 7);
+    if (!days.includes(dow)) return [];
+  }
+  const perDay = Math.max(1, Math.round(perWeek / 7)), jitter = rand(`slot|${s.pair}|${s.from}`);
+  if (s.durMin >= 480 && perDay <= 2) {
+    // Long crossings sail in the evening, with a morning sailing if there are two.
+    return [round5((s.sleeper ? 19.5 : 18) * 60 + jitter * (s.sleeper ? 110 : 180)), round5(8 * 60 + jitter * 120)].slice(0, perDay);
+  }
+  return Array.from({ length: perDay }, (_, i) => round5(FIRST_DEP + ((i + jitter) / perDay) * (LAST_DEP - FIRST_DEP)));
+}
+
+export const MODES = {
+  air: { label: 'Flights', icon: '✈' },
+  rail: { label: 'Trains', icon: '🚆' },
+  ferry: { label: 'Ferries', icon: '⛴️' },
+};
+
+// `opts` is usually the challenge: it supplies the rail scope and the home city.
+export function createWorld(region, modes = ['air'], opts = {}) {
+  const cities = new Map(region.cities.map((c) => [c.id, c]));
+  const services = new Map(region.cities.map((c) => [c.id, []]));
+  let all = modes.flatMap((mode) => PROVIDERS[mode](region, cities, opts));
+  if (opts.home && !modes.includes('air')) {
+    // Keep only the part of the surface network that can be reached from home.
+    const linked = new Set([opts.home]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const s of all) if (linked.has(s.from) && !linked.has(s.to)) { linked.add(s.to); grew = true; }
+    }
+    all = all.filter((s) => linked.has(s.from));
+  }
+  for (const s of all) services.get(s.from).push(s);
+
+  const cache = new Map();
+
+  // Every departure leaving `cityId` on the given local calendar day, sorted by time.
+  function departures(cityId, y, m, d) {
+    const key = `${cityId}|${y}-${m}-${d}`;
+    if (cache.has(key)) return cache.get(key);
+    const tz = cities.get(cityId).tz;
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    const legs = [];
+    for (const s of services.get(cityId)) {
+      if (s.dayP < 1 && rand(`day|${s.pair}|${dow}`) >= s.dayP) continue;
+      const number = 100 + (hash(`no|${s.pair}`) % 880) * 10 + (s.from < s.to ? 0 : 1);
+      for (const [i, minutes] of slots(s, m, dow).entries()) {
+        const dep = localToUtc(tz, y, m, d, minutes);
+        const id = `${s.pair}|${s.from}|${y}-${m}-${d}|${i}`;
+        const tight = rand(`seats|${id}`);
+        const scarcity = 1 + 0.6 * tight * tight;
+        // A sailing of seven hours or more that runs through the night includes a berth.
+        const berth = (s.mode === 'ferry' || s.sleeper) && s.durMin >= 420 && minutes + s.durMin >= 24 * 60;
+        legs.push({
+          id, mode: s.mode, from: s.from, to: s.to, dep, arr: dep + s.durMin * MIN, durMin: s.durMin, km: s.km,
+          carrier: s.carrier.name, code: s.carrier.code, kind: s.carrier.type, no: `${s.carrier.code} ${number + i * 2}`,
+          port: s.port, shuttle: s.shuttle, portTo: s.portTo, shuttleTo: s.shuttleTo, berth, sleeper: !!s.sleeper,
+          fare: Math.max(9, Math.round(s.fare(timeOfDay(minutes), SEASON[m - 1], scarcity))) + (berth ? s.cabin : 0),
+          seats: tight > 0.85 ? 1 + Math.floor(rand(`left|${id}`) * 4) : null,
+        });
+      }
+    }
+    legs.sort((a, b) => a.dep - b.dep);
+    cache.set(key, legs);
+    return legs;
+  }
+
+  // Departures on the local calendar day that contains `ms`.
+  function departuresOn(cityId, ms) {
+    const p = local(cities.get(cityId).tz, ms);
+    return departures(cityId, p.y, p.m, p.d);
+  }
+
+  return { region, modes, cities, services, departures, departuresOn };
+}

@@ -1,0 +1,9 @@
+{
+  "name": "viaggi",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 tools/serve.py 5173",
+    "solve": "node tools/solve.mjs"
+  }
+}

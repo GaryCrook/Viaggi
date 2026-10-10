@@ -1,0 +1,253 @@
+// Region pack: Europe.
+// A region pack is plain data: cities, carriers (air) and corridors (rail).
+// Adding a new region or transport mode means adding a pack like this one;
+// the engine never hard-codes geography.
+//
+// City fields
+//   tier      1 = major hub, 2 = large city, 3 = regional
+//   idx       cost-of-living index (1.0 = European average) – scales hotels, meals, souvenirs
+//   apt       main airport code shown on the board
+//   xfer      airport <-> city centre, minutes one way
+//   xferCost  airport <-> city centre, GBP one way
+//   railOnly  on the rail and ferry map only: no flights in this game
+
+const c = (id, name, country, lat, lon, tz, tier, idx, apt, xfer, xferCost, emoji, souvenir) =>
+  ({ id, name, country, lat, lon, tz, tier, idx, apt, xfer, xferCost, emoji, souvenir });
+
+export const CITIES = [
+  c('LON', 'London', 'GB', 51.47, -0.45, 'Europe/London', 1, 1.4, 'LHR', 45, 13, '🚌', 'Red bus model'),
+  c('MAN', 'Manchester', 'GB', 53.36, -2.27, 'Europe/London', 2, 1.1, 'MAN', 20, 5, '🐝', 'Worker-bee mug'),
+  c('EDI', 'Edinburgh', 'GB', 55.95, -3.37, 'Europe/London', 2, 1.2, 'EDI', 30, 6, '🧣', 'Tartan scarf'),
+  c('DUB', 'Dublin', 'IE', 53.42, -6.27, 'Europe/Dublin', 2, 1.3, 'DUB', 30, 7, '☘️', 'Tin whistle'),
+  c('PAR', 'Paris', 'FR', 49.01, 2.55, 'Europe/Paris', 1, 1.3, 'CDG', 45, 12, '🗼', 'Eiffel Tower keyring'),
+  c('NCE', 'Nice', 'FR', 43.66, 7.22, 'Europe/Paris', 3, 1.3, 'NCE', 25, 2, '🧼', 'Lavender soap'),
+  c('AMS', 'Amsterdam', 'NL', 52.31, 4.76, 'Europe/Amsterdam', 1, 1.3, 'AMS', 20, 6, '🌷', 'Tulip bulbs'),
+  c('BRU', 'Brussels', 'BE', 50.90, 4.48, 'Europe/Brussels', 2, 1.2, 'BRU', 18, 9, '🧇', 'Waffle tin'),
+  c('LUX', 'Luxembourg', 'LU', 49.63, 6.20, 'Europe/Luxembourg', 3, 1.4, 'LUX', 20, 0, '🏰', 'Castle snow globe'),
+  c('FRA', 'Frankfurt', 'DE', 50.04, 8.56, 'Europe/Berlin', 1, 1.2, 'FRA', 15, 5, '🍎', 'Apfelwein jug'),
+  c('MUC', 'Munich', 'DE', 48.35, 11.79, 'Europe/Berlin', 1, 1.2, 'MUC', 40, 11, '🍺', 'Beer stein'),
+  c('BER', 'Berlin', 'DE', 52.36, 13.50, 'Europe/Berlin', 1, 1.1, 'BER', 35, 4, '🐻', 'Berlin bear'),
+  c('ZRH', 'Zurich', 'CH', 47.46, 8.55, 'Europe/Zurich', 1, 1.6, 'ZRH', 12, 6, '🍫', 'Swiss chocolate'),
+  c('GVA', 'Geneva', 'CH', 46.24, 6.11, 'Europe/Zurich', 2, 1.6, 'GVA', 8, 3, '⌚', 'Souvenir watch'),
+  c('VIE', 'Vienna', 'AT', 48.11, 16.57, 'Europe/Vienna', 1, 1.1, 'VIE', 16, 4, '🎼', 'Mozart chocolates'),
+  c('MAD', 'Madrid', 'ES', 40.49, -3.57, 'Europe/Madrid', 1, 1.0, 'MAD', 25, 5, '🪭', 'Painted fan'),
+  c('BCN', 'Barcelona', 'ES', 41.30, 2.08, 'Europe/Madrid', 1, 1.1, 'BCN', 30, 6, '🦎', 'Mosaic lizard'),
+  c('AGP', 'Málaga', 'ES', 36.67, -4.50, 'Europe/Madrid', 3, 0.9, 'AGP', 15, 2, '💃', 'Castanets'),
+  c('PMI', 'Palma', 'ES', 39.55, 2.74, 'Europe/Madrid', 3, 1.0, 'PMI', 20, 4, '🦪', 'Pearl earrings'),
+  { ...c('SVQ', 'Seville', 'ES', 37.39, -5.99, 'Europe/Madrid', 2, 0.9, 'SVQ', 25, 4, '🍊', 'Orange marmalade'), railOnly: true },
+  { ...c('VLC', 'Valencia', 'ES', 39.47, -0.38, 'Europe/Madrid', 2, 0.9, 'VLC', 20, 4, '🥘', 'Paella pan'), railOnly: true },
+  { ...c('ZAZ', 'Zaragoza', 'ES', 41.65, -0.89, 'Europe/Madrid', 3, 0.85, 'ZAZ', 25, 2, '🍬', 'Fruit sweets'), railOnly: true },
+  { ...c('BIO', 'Bilbao', 'ES', 43.26, -2.93, 'Europe/Madrid', 2, 1.0, 'BIO', 20, 3, '🖼️', 'Guggenheim print'), railOnly: true },
+  { ...c('SDR', 'Santander', 'ES', 43.46, -3.81, 'Europe/Madrid', 3, 0.95, 'SDR', 15, 3, '🐟', 'Tin of anchovies'), railOnly: true },
+  c('LIS', 'Lisbon', 'PT', 38.77, -9.13, 'Europe/Lisbon', 2, 0.9, 'LIS', 20, 2, '🟦', 'Azulejo tile'),
+  c('OPO', 'Porto', 'PT', 41.24, -8.68, 'Europe/Lisbon', 3, 0.85, 'OPO', 30, 2, '🍷', 'Port miniature'),
+  c('ROM', 'Rome', 'IT', 41.80, 12.25, 'Europe/Rome', 1, 1.1, 'FCO', 32, 12, '🏛️', 'Colosseum model'),
+  c('MIL', 'Milan', 'IT', 45.63, 8.72, 'Europe/Rome', 1, 1.2, 'MXP', 50, 11, '👜', 'Leather purse'),
+  c('VCE', 'Venice', 'IT', 45.51, 12.35, 'Europe/Rome', 2, 1.3, 'VCE', 30, 8, '🎭', 'Carnival mask'),
+  c('NAP', 'Naples', 'IT', 40.88, 14.29, 'Europe/Rome', 3, 0.9, 'NAP', 20, 4, '🍕', 'Pizza magnet'),
+  { ...c('TRN', 'Turin', 'IT', 45.07, 7.69, 'Europe/Rome', 2, 1.0, 'TRN', 30, 6, '🐂', 'Gianduja chocolates'), railOnly: true },
+  { ...c('BLQ', 'Bologna', 'IT', 44.51, 11.34, 'Europe/Rome', 2, 1.0, 'BLQ', 15, 9, '🍝', 'Tortellini tin'), railOnly: true },
+  { ...c('GOA', 'Genoa', 'IT', 44.41, 8.93, 'Europe/Rome', 2, 1.0, 'GOA', 25, 5, '🌿', 'Jar of pesto'), railOnly: true },
+  { ...c('PMO', 'Palermo', 'IT', 38.12, 13.36, 'Europe/Rome', 2, 0.85, 'PMO', 45, 7, '🍋', 'Ceramic lemon'), railOnly: true },
+  { ...c('FLR', 'Florence', 'IT', 43.78, 11.25, 'Europe/Rome', 2, 1.2, 'FLR', 20, 2, '🎨', 'Marbled paper'), railOnly: true },
+  c('MLA', 'Valletta', 'MT', 35.86, 14.48, 'Europe/Malta', 3, 0.9, 'MLA', 25, 2, '⚜️', 'Filigree cross'),
+  c('CPH', 'Copenhagen', 'DK', 55.62, 12.65, 'Europe/Copenhagen', 1, 1.5, 'CPH', 15, 4, '🧜‍♀️', 'Little Mermaid figurine'),
+  c('STO', 'Stockholm', 'SE', 59.65, 17.93, 'Europe/Stockholm', 1, 1.3, 'ARN', 20, 22, '🐴', 'Dala horse'),
+  c('OSL', 'Oslo', 'NO', 60.20, 11.08, 'Europe/Oslo', 2, 1.5, 'OSL', 20, 17, '🧌', 'Troll figurine'),
+  c('HEL', 'Helsinki', 'FI', 60.32, 24.96, 'Europe/Helsinki', 2, 1.3, 'HEL', 30, 4, '☕', 'Moomin mug'),
+  c('REK', 'Reykjavík', 'IS', 63.99, -22.61, 'Atlantic/Reykjavik', 3, 1.7, 'KEF', 45, 22, '🧶', 'Wool mittens'),
+  c('TLL', 'Tallinn', 'EE', 59.41, 24.83, 'Europe/Tallinn', 3, 0.85, 'TLL', 15, 2, '🧤', 'Knitted gloves'),
+  c('RIX', 'Riga', 'LV', 56.92, 23.97, 'Europe/Riga', 3, 0.75, 'RIX', 25, 2, '🍾', 'Black Balsam'),
+  c('VNO', 'Vilnius', 'LT', 54.63, 25.29, 'Europe/Vilnius', 3, 0.7, 'VNO', 15, 1, '📿', 'Amber bracelet'),
+  c('WAW', 'Warsaw', 'PL', 52.17, 20.97, 'Europe/Warsaw', 2, 0.7, 'WAW', 25, 1, '🎹', 'Chopin music box'),
+  { ...c('GDN', 'Gdańsk', 'PL', 54.35, 18.65, 'Europe/Warsaw', 2, 0.75, 'GDN', 30, 2, '⚓', 'Amber ship'), railOnly: true },
+  c('KRK', 'Kraków', 'PL', 50.08, 19.78, 'Europe/Warsaw', 3, 0.7, 'KRK', 20, 3, '🐉', 'Wawel dragon'),
+  c('PRG', 'Prague', 'CZ', 50.10, 14.26, 'Europe/Prague', 2, 0.8, 'PRG', 35, 2, '🎎', 'Marionette'),
+  c('BUD', 'Budapest', 'HU', 47.44, 19.26, 'Europe/Budapest', 2, 0.7, 'BUD', 35, 3, '🌶️', 'Paprika tin'),
+  c('BUH', 'Bucharest', 'RO', 44.57, 26.09, 'Europe/Bucharest', 2, 0.6, 'OTP', 25, 1, '🧛', 'Dracula mug'),
+  c('SOF', 'Sofia', 'BG', 42.70, 23.41, 'Europe/Sofia', 3, 0.55, 'SOF', 20, 1, '🌹', 'Rose oil'),
+  c('BEG', 'Belgrade', 'RS', 44.82, 20.31, 'Europe/Belgrade', 3, 0.55, 'BEG', 30, 2, '🍶', 'Rakija miniature'),
+  c('ZAG', 'Zagreb', 'HR', 45.74, 16.07, 'Europe/Zagreb', 3, 0.75, 'ZAG', 30, 5, '❤️', 'Licitar heart'),
+  c('DBV', 'Dubrovnik', 'HR', 42.56, 18.27, 'Europe/Zagreb', 3, 1.0, 'DBV', 30, 8, '🪻', 'Lavender sachet'),
+  c('LJU', 'Ljubljana', 'SI', 46.22, 14.46, 'Europe/Ljubljana', 3, 0.85, 'LJU', 30, 4, '🍯', 'Honey jar'),
+  c('ATH', 'Athens', 'GR', 37.94, 23.94, 'Europe/Athens', 2, 0.85, 'ATH', 40, 8, '🦉', 'Olive-wood owl'),
+  c('IST', 'Istanbul', 'TR', 41.26, 28.74, 'Europe/Istanbul', 1, 0.6, 'IST', 50, 3, '🧿', 'Evil-eye charm'),
+];
+
+export const COUNTRY_NAMES = {
+  GB: 'the UK', IE: 'Ireland', FR: 'France', NL: 'the Netherlands', BE: 'Belgium', LU: 'Luxembourg',
+  DE: 'Germany', CH: 'Switzerland', AT: 'Austria', ES: 'Spain', PT: 'Portugal', IT: 'Italy', MT: 'Malta',
+  DK: 'Denmark', SE: 'Sweden', NO: 'Norway', FI: 'Finland', IS: 'Iceland', EE: 'Estonia', LV: 'Latvia',
+  LT: 'Lithuania', PL: 'Poland', CZ: 'Czechia', HU: 'Hungary', RO: 'Romania', BG: 'Bulgaria', RS: 'Serbia',
+  HR: 'Croatia', SI: 'Slovenia', GR: 'Greece', TR: 'Türkiye',
+};
+
+// Air network model. Schedules are generated from where each airline actually
+// bases aircraft: network carriers fan out from their hubs several times a day,
+// low-cost carriers fly thinner point-to-point routes from their bases.
+//   hubs: { cityId: reach }   reach = share of the region's cities served from that hub/base
+const net = (code, name, hubs) => ({ code, name, type: 'network', hubs });
+const lcc = (code, name, reach, bases) =>
+  ({ code, name, type: 'lowcost', hubs: Object.fromEntries(bases.map((b) => [b, reach])) });
+
+export const CARRIERS = [
+  net('BA', 'British Airways', { LON: 1 }),
+  net('LH', 'Lufthansa', { FRA: 1, MUC: 0.9 }),
+  net('AF', 'Air France', { PAR: 1 }),
+  net('KL', 'KLM', { AMS: 1 }),
+  net('TK', 'Turkish Airlines', { IST: 1 }),
+  net('IB', 'Iberia', { MAD: 0.8 }),
+  net('LX', 'SWISS', { ZRH: 0.85, GVA: 0.3 }),
+  net('OS', 'Austrian', { VIE: 0.85 }),
+  net('AZ', 'ITA Airways', { ROM: 0.75, MIL: 0.3 }),
+  net('SK', 'SAS', { CPH: 0.7, STO: 0.5, OSL: 0.45 }),
+  net('TP', 'TAP Air Portugal', { LIS: 0.7, OPO: 0.25 }),
+  net('SN', 'Brussels Airlines', { BRU: 0.7 }),
+  net('LO', 'LOT Polish', { WAW: 0.7 }),
+  net('AY', 'Finnair', { HEL: 0.6 }),
+  net('A3', 'Aegean', { ATH: 0.6 }),
+  net('EI', 'Aer Lingus', { DUB: 0.5 }),
+  net('BT', 'airBaltic', { RIX: 0.6, TLL: 0.25, VNO: 0.25 }),
+  net('JU', 'Air Serbia', { BEG: 0.5 }),
+  net('RO', 'TAROM', { BUH: 0.4 }),
+  net('LG', 'Luxair', { LUX: 0.4 }),
+  net('OU', 'Croatia Airlines', { ZAG: 0.35, DBV: 0.2 }),
+  net('KM', 'KM Malta Airlines', { MLA: 0.35 }),
+  net('FI', 'Icelandair', { REK: 0.35 }),
+  lcc('FR', 'Ryanair', 0.33, ['DUB', 'LON', 'MAN', 'EDI', 'MIL', 'ROM', 'NAP', 'VCE', 'MAD', 'BCN', 'AGP', 'PMI',
+    'OPO', 'LIS', 'BRU', 'BER', 'KRK', 'WAW', 'BUD', 'PRG', 'VIE', 'SOF', 'BUH', 'ATH', 'MLA', 'VNO', 'RIX', 'ZAG']),
+  lcc('U2', 'easyJet', 0.33, ['LON', 'MAN', 'EDI', 'MIL', 'NAP', 'GVA', 'BER', 'PAR', 'NCE', 'AMS', 'LIS', 'OPO',
+    'BCN', 'PMI', 'AGP']),
+  lcc('W6', 'Wizz Air', 0.3, ['BUD', 'WAW', 'KRK', 'BUH', 'SOF', 'BEG', 'VNO', 'LON', 'ROM', 'MIL', 'VIE']),
+  lcc('VY', 'Vueling', 0.4, ['BCN', 'PMI', 'AGP']),
+  lcc('DY', 'Norwegian', 0.3, ['OSL', 'CPH', 'STO']),
+];
+
+// Rail expansion: principal high-speed and intercity corridors. A rail game uses
+// either the cross-border trains between major cities or one country's network.
+// [a, b, minutes, trains per day, operator code, operator name, premium?, sleeper nights per week?]
+// A sleeper leaves in the evening and includes a berth, so it replaces a hotel night.
+export const RAIL = [
+  ['LON', 'PAR', 140, 8, 'EST', 'Eurostar', true],
+  ['LON', 'BRU', 120, 5, 'EST', 'Eurostar', true],
+  ['LON', 'AMS', 250, 3, 'EST', 'Eurostar', true],
+  ['PAR', 'BRU', 85, 10, 'EST', 'Eurostar', true],
+  ['PAR', 'AMS', 200, 6, 'EST', 'Eurostar', true],
+  ['BRU', 'AMS', 120, 8, 'IC', 'NS / SNCB', false],
+  ['BRU', 'LUX', 190, 8, 'IC', 'SNCB / CFL', false],
+  ['BRU', 'FRA', 185, 4, 'ICE', 'DB', false],
+  ['PAR', 'LUX', 130, 4, 'TGV', 'SNCF', false],
+  ['PAR', 'FRA', 230, 4, 'TGV', 'SNCF / DB', false],
+  ['PAR', 'ZRH', 245, 4, 'TGV', 'TGV Lyria', false],
+  ['PAR', 'GVA', 195, 5, 'TGV', 'TGV Lyria', false],
+  ['PAR', 'BCN', 400, 2, 'TGV', 'SNCF', false],
+  ['PAR', 'MIL', 420, 2, 'TGV', 'SNCF', false],
+  ['PAR', 'NCE', 345, 4, 'TGV', 'SNCF', false],
+  ['NCE', 'MIL', 285, 2, 'IC', 'Trenitalia', false],
+  ['AMS', 'FRA', 240, 5, 'ICE', 'DB / NS', false],
+  ['AMS', 'BER', 375, 4, 'IC', 'DB / NS', false],
+  ['FRA', 'MUC', 195, 10, 'ICE', 'DB', false],
+  ['FRA', 'BER', 245, 10, 'ICE', 'DB', false],
+  ['FRA', 'ZRH', 235, 5, 'ICE', 'DB / SBB', false],
+  ['BER', 'MUC', 240, 8, 'ICE', 'DB', false],
+  ['BER', 'PRG', 255, 6, 'EC', 'DB / ČD', false],
+  ['BER', 'WAW', 340, 4, 'EC', 'DB / PKP', false],
+  ['MUC', 'VIE', 240, 6, 'RJ', 'ÖBB Railjet', false],
+  ['MUC', 'ZRH', 210, 5, 'EC', 'SBB / DB', false],
+  ['VIE', 'BUD', 160, 10, 'RJ', 'ÖBB Railjet', false],
+  ['VIE', 'PRG', 245, 7, 'RJ', 'ÖBB / ČD', false],
+  ['VIE', 'LJU', 365, 2, 'EC', 'ÖBB / SŽ', false],
+  ['VIE', 'VCE', 460, 2, 'RJ', 'ÖBB Railjet', false],
+  ['VIE', 'ZRH', 470, 3, 'RJ', 'ÖBB Railjet', false],
+  ['VIE', 'WAW', 450, 3, 'EC', 'ÖBB / PKP', false],
+  ['PRG', 'BUD', 405, 5, 'EC', 'ČD / MÁV', false],
+  ['MUC', 'PRG', 340, 4, 'EC', 'DB / ČD', false],
+  ['LJU', 'ZAG', 140, 4, 'EC', 'SŽ / HŽ', false],
+  ['ZRH', 'MIL', 200, 7, 'EC', 'SBB / Trenitalia', false],
+  ['GVA', 'ZRH', 165, 12, 'IC', 'SBB', false],
+  ['GVA', 'MIL', 240, 3, 'EC', 'SBB / Trenitalia', false],
+  ['TRN', 'MIL', 60, 14, 'FR', 'Frecciarossa', false],
+  ['MIL', 'BLQ', 65, 14, 'FR', 'Frecciarossa', false],
+  ['BLQ', 'FLR', 40, 14, 'FR', 'Frecciarossa', false],
+  ['FLR', 'ROM', 95, 14, 'FR', 'Frecciarossa', false],
+  ['VCE', 'BLQ', 90, 10, 'FR', 'Frecciarossa', false],
+  ['MIL', 'GOA', 95, 12, 'IC', 'Trenitalia', false],
+  ['TRN', 'GOA', 110, 10, 'IC', 'Trenitalia', false],
+  ['GOA', 'ROM', 255, 6, 'FB', 'Frecciabianca', false],
+  ['NAP', 'PMO', 560, 3, 'IC', 'Trenitalia', false],
+  ['MIL', 'ROM', 190, 12, 'FR', 'Frecciarossa', false],
+  ['MIL', 'VCE', 150, 10, 'FR', 'Frecciarossa', false],
+  ['ROM', 'NAP', 70, 14, 'FR', 'Frecciarossa', false],
+  ['ROM', 'VCE', 240, 6, 'FR', 'Frecciarossa', false],
+  ['MAD', 'BCN', 150, 12, 'AVE', 'Renfe AVE', false],
+  ['MAD', 'AGP', 160, 8, 'AVE', 'Renfe AVE', false],
+  ['MAD', 'ZAZ', 80, 12, 'AVE', 'Renfe AVE', false],
+  ['ZAZ', 'BCN', 90, 12, 'AVE', 'Renfe AVE', false],
+  ['MAD', 'SVQ', 150, 12, 'AVE', 'Renfe AVE', false],
+  ['SVQ', 'AGP', 120, 5, 'AV', 'Renfe Avant', false],
+  ['SVQ', 'BCN', 330, 2, 'AVE', 'Renfe AVE', false],
+  ['MAD', 'VLC', 110, 12, 'AVE', 'Renfe AVE', false],
+  ['VLC', 'BCN', 180, 8, 'EM', 'Renfe Euromed', false],
+  ['MAD', 'BIO', 285, 4, 'ALV', 'Renfe Alvia', false],
+  ['MAD', 'SDR', 255, 3, 'ALV', 'Renfe Alvia', false],
+  ['BIO', 'SDR', 180, 3, 'RG', 'Renfe Regional', false],
+  ['BIO', 'BCN', 400, 2, 'ALV', 'Renfe Alvia', false],
+  ['LIS', 'OPO', 175, 8, 'AP', 'CP Alfa Pendular', false],
+  ['LON', 'MAN', 130, 12, 'AW', 'Avanti West Coast', false],
+  ['LON', 'EDI', 265, 10, 'LNER', 'LNER', false],
+  ['MAN', 'EDI', 195, 5, 'TPE', 'TransPennine', false],
+  ['CPH', 'STO', 315, 4, 'SJ', 'SJ', false],
+  ['STO', 'OSL', 330, 3, 'SJ', 'SJ', false],
+  ['WAW', 'KRK', 150, 8, 'EIP', 'PKP Intercity', false],
+  ['WAW', 'GDN', 160, 10, 'EIP', 'PKP Intercity', false],
+  ['GDN', 'BER', 360, 2, 'EC', 'PKP / DB', false],
+  ['VNO', 'RIX', 255, 1, 'LTG', 'LTG Link', false],
+  // Sleepers
+  ['BRU', 'VIE', 840, 1, 'NJ', 'ÖBB Nightjet', false, 3],
+  ['AMS', 'VIE', 840, 1, 'NJ', 'ÖBB Nightjet', false, 7],
+  ['AMS', 'ZRH', 720, 1, 'NJ', 'ÖBB Nightjet', false, 7],
+  ['BER', 'ZRH', 720, 1, 'NJ', 'ÖBB Nightjet', false, 7],
+  ['BER', 'VIE', 720, 1, 'NJ', 'ÖBB Nightjet', false, 7],
+  ['VIE', 'ROM', 840, 1, 'NJ', 'ÖBB Nightjet', false, 7],
+  ['MUC', 'ROM', 780, 1, 'NJ', 'ÖBB Nightjet', false, 7],
+  ['VIE', 'ZRH', 660, 1, 'NJ', 'ÖBB Nightjet', false, 7],
+  ['BER', 'BUD', 780, 1, 'EN', 'EuroNight Metropol', false, 7],
+  ['BER', 'STO', 960, 1, 'EN', 'SJ EuroNight', false, 7],
+  ['BRU', 'PRG', 900, 1, 'ES', 'European Sleeper', false, 3],
+  ['MIL', 'PMO', 1230, 1, 'ICN', 'Intercity Notte', false, 7],
+  ['ROM', 'PMO', 750, 1, 'ICN', 'Intercity Notte', false, 7],
+  ['TRN', 'NAP', 660, 1, 'ICN', 'Intercity Notte', false, 7],
+];
+
+// Ferries, as an alternative to the long way round by rail. They sail port to
+// port; a free shuttle links each port with that city's rail station.
+// [city, port, shuttle minutes, city, port, shuttle minutes, minutes at sea,
+//  sailings per week in summer, per week in winter, code, operator]
+// Zero in winter means summer only. Short crossings sail many times a day;
+// long ones leave in the evening, a few times a week.
+export const FERRIES = [
+  ['LON', 'Dover', 70, 'PAR', 'Calais', 110, 90, 84, 70, 'PO', 'P&O Ferries'],
+  ['LON', 'Harwich', 80, 'AMS', 'Hook of Holland', 50, 420, 14, 14, 'SL', 'Stena Line'],
+  ['LON', 'Holyhead', 220, 'DUB', 'Dublin Port', 20, 195, 21, 21, 'IF', 'Irish Ferries'],
+  ['DUB', 'Dublin Port', 20, 'PAR', 'Cherbourg', 195, 1110, 4, 3, 'IF', 'Irish Ferries'],
+  ['AMS', 'IJmuiden', 40, 'EDI', 'Newcastle', 100, 945, 7, 7, 'DF', 'DFDS'],
+  ['BER', 'Rostock', 150, 'CPH', 'Gedser', 135, 120, 28, 21, 'SC', 'Scandlines'],
+  ['CPH', 'Nordhavn', 20, 'OSL', 'Vippetangen', 15, 1140, 7, 7, 'DF', 'DFDS'],
+  ['STO', 'Värtahamnen', 20, 'HEL', 'Olympia Terminal', 15, 990, 14, 7, 'TS', 'Tallink Silja'],
+  ['STO', 'Värtahamnen', 20, 'TLL', 'Tallinn D-Terminal', 15, 1020, 7, 7, 'TS', 'Tallink Silja'],
+  ['STO', 'Värtahamnen', 20, 'RIX', 'Riga Terminal', 15, 1050, 7, 4, 'TS', 'Tallink Silja'],
+  ['HEL', 'West Harbour', 15, 'TLL', 'Tallinn D-Terminal', 15, 120, 84, 56, 'TS', 'Tallink Silja'],
+  ['HEL', 'Hanko', 100, 'GDN', 'Gdynia', 35, 1140, 4, 3, 'FL', 'Finnlines'],
+  ['STO', 'Nynäshamn', 60, 'GDN', 'Westerplatte', 25, 1080, 7, 5, 'PF', 'Polferries'],
+  ['BCN', 'Port of Barcelona', 20, 'ROM', 'Civitavecchia', 60, 1200, 7, 5, 'GR', 'Grimaldi Lines'],
+  ['VCE', 'Fusina', 30, 'ATH', 'Patras', 180, 1860, 4, 2, 'AN', 'Anek Lines'],
+  ['LON', 'Portsmouth', 100, 'BIO', 'Zierbena', 30, 1680, 3, 2, 'BF', 'Brittany Ferries'],
+  ['LON', 'Portsmouth', 100, 'SDR', 'Santander Port', 10, 1740, 3, 2, 'BF', 'Brittany Ferries'],
+  ['BCN', 'Port of Barcelona', 20, 'PMI', 'Port of Palma', 15, 450, 14, 7, 'BA', 'Baleària'],
+  ['VLC', 'Port of Valencia', 20, 'PMI', 'Port of Palma', 15, 480, 7, 7, 'TM', 'Trasmed'],
+  ['GOA', 'Port of Genoa', 15, 'PMO', 'Port of Palermo', 15, 1230, 7, 4, 'GNV', 'GNV'],
+  ['NAP', 'Molo Beverello', 15, 'PMO', 'Port of Palermo', 15, 630, 14, 7, 'TI', 'Tirrenia'],
+  ['ROM', 'Civitavecchia', 60, 'PMO', 'Port of Palermo', 15, 840, 3, 2, 'GNV', 'GNV'],
+];
+
+export const EUROPE = { id: 'europe', name: 'Europe', currency: '£', cities: CITIES, carriers: CARRIERS, rail: RAIL, ferries: FERRIES, countryNames: COUNTRY_NAMES };
