@@ -303,3 +303,7 @@ button:disabled { cursor: not-allowed; }
 .rt-later { font-size: 11px; color: #8a97a6; white-space: nowrap; }
 .rt-none, .rt-foot { font-size: 12px; color: #8a97a6; margin: 4px 0; }
 .rt-foot { padding: 10px 16px 14px; line-height: 1.45; }
+
+/* ---------- Start bar ---------- */
+.startbar { position: sticky; bottom: -24px; margin: 14px -24px -24px; padding: 14px 24px 20px; background: linear-gradient(to top, var(--paper) 75%, transparent); }
+@media (max-width: 800px) { .startbar { bottom: -18px; margin: 14px -18px -18px; padding: 14px 18px 16px; } }

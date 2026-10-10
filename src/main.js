@@ -432,7 +432,10 @@ const SHEETS = { menu: menuSheet, start: startSheet, tickets: ticketSheet, night
 function renderModal() {
   const el = $('modal');
   if (!ui.modal) { el.innerHTML = ''; return; }
+  // Redrawing the sheet would jump it back to the top, so keep its scroll while the same sheet stays open.
+  const old = el.querySelector('.sheet'), keep = old?.classList.contains(ui.modal) ? old.scrollTop : 0;
   el.innerHTML = `<div class="sheet ${ui.modal}">${SHEETS[ui.modal]()}</div>`;
+  el.querySelector('.sheet').scrollTop = keep;
 }
 
 function menuSheet() {
@@ -470,7 +473,7 @@ function startSheet() {
     <div class="cards">${pack('air')}</div>
     <div class="packhead"><b>🚆 Rail and sail</b><span>No flying. International journeys show cross-border trains between major cities; single-country journeys show that country’s network. Ferries offer a slower, cheaper way round: a free shuttle links each port with the station, and an overnight sailing or a sleeper train is your bed for the night.</span></div>
     <div class="cards">${pack('rail')}</div>
-    <button class="btn big" data-act="start">Start the journey</button>`;
+    <div class="startbar"><button class="btn big" data-act="start">Start ${ALL_CHALLENGES.find((ch) => ch.id === ui.challenge).name}</button></div>`;
 }
 
 function ticketSheet() {
