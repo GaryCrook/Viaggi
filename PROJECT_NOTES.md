@@ -15,7 +15,8 @@ choose under pressure.
 
 - Folder: `/Users/garycrook/TravelGo` (still the old name; the game is "Viaggi: The Great Race")
 - Run: `npm start`, then http://localhost:5173 (preview config `travel-go` in `~/.claude/launch.json`)
-- Not under its own version control. The home folder is a git repo and this folder is untracked in it. Nothing has been committed.
+- Version control: its own git repository, pushed to https://github.com/GaryCrook/Viaggi (branch `main`). GitHub CLI is not installed on this Mac; plain `git push` works.
+- The preview server must be `tools/serve.py` (no caching, IPv4 and IPv6). Plain `python -m http.server` served stale files.
 
 ## Name
 
@@ -89,4 +90,19 @@ Limits come from `npm run solve`; difficulty is sanity-checked with `node tools/
 2. Tune the easy rail journeys; decide whether to limit the Routes tab.
 3. Add more international journeys and another country network (Germany, France or Britain).
 4. Verify rail and ferry data against real timetables.
-5. Put the project under its own version control.
+5. Add a second training lesson for rail and sail (ferries, sleepers, running for a departure, bonus tickets).
+6. Decide the open design questions below.
+
+## Open questions for Gary
+
+- Should running out of money end the game (current), or let the budget go negative and only cost the thrift star?
+- Should the Routes tab be limited (uses per day, or no exact times) to keep some fog of war?
+- Should long port connections (Holyhead, Patras, Rostock) stay as free shuttles, become paid trains, or move to nearer cities?
+- Which country network next: Germany, France or Britain? Should Italy be opened inside international journeys the way Spain is?
+- Subtitle: keep "The Great Race" or pick something more distinctive?
+
+## State at last save (10 October 2026)
+
+Everything described here is built, played through in the preview, committed and pushed.
+The start screen opens on the splash page; the training flight was played to "Training complete".
+Nothing is half-finished.
