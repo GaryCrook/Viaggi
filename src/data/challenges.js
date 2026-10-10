@@ -55,6 +55,13 @@ export const CHALLENGES = [
   },
 ];
 
+// The guided first journey: two short hops, no disruption, no bonus tickets.
+export const TRAINING = {
+  id: 'training', pack: 'air', modes: ['air'], name: 'Training Flight', level: 'Guided', training: true, seed: 'training',
+  blurb: 'A short guided trip to learn the board, the stamps and the clock.',
+  home: 'LON', targets: ['PAR', 'AMS'], date: [2026, 6, 2], hours: 34, budget: 650, parHours: 24,
+};
+
 // One shared challenge per calendar day: same cities, same timetable and same
 // disruption for everyone, with limits calibrated on the spot.
 import { rand } from '../engine/util.js';

@@ -2,7 +2,7 @@
 /* global maplibregl */
 
 import { EUROPE } from './data/europe.js';
-import { CHALLENGES, dailyChallenge } from './data/challenges.js';
+import { CHALLENGES, TRAINING, dailyChallenge } from './data/challenges.js';
 import { POSTCARDS } from './data/postcards.js';
 import { createWorld, MODES } from './engine/world.js';
 import * as G from './engine/game.js';
@@ -25,7 +25,7 @@ const ALL_CHALLENGES = [dailyChallenge(createWorld(EUROPE)), ...CHALLENGES];
 
 let world, g, map, popup;
 const pins = new Map();
-const ui = { open: null, filter: 'all', peek: null, busy: false, modal: 'start', challenge: ALL_CHALLENGES[0].id,
+const ui = { open: null, filter: 'all', peek: null, busy: false, modal: 'splash', coach: null, challenge: ALL_CHALLENGES[0].id,
   seenNews: 0, flip: false, keep: [], stamped: null };
 
 // ------------------------------------------------------------------ map
@@ -225,6 +225,78 @@ function stampHTML(id, big = false) {
     <small>${c.name}</small><i>${c.emoji}</i><small>${date} · ${c.country}</small></div>`;
 }
 
+// ------------------------------------------------------------------ training coach
+
+// The next thing to teach, worked out from where the player is. Because it is
+// derived from the game state, the player can wander off and the coach keeps up.
+function coachStep() {
+  if (!g?.challenge.training || g.over || !ui.coach) return null;
+  const want = g.challenge.targets.filter((t) => !g.collected.includes(t));
+  const T = want.includes(g.city) ? g.city : want[0] || g.challenge.home;
+  const there = world.cities.get(T), here = G.here(g);
+  if (ui.modal === 'stamp') {
+    return { text: 'That stamp is your proof of the visit. Collect one in every city on your list.', target: '.sheet [data-act=close]' };
+  }
+  if (ui.modal === 'night') {
+    return { text: 'Nothing departs between 22:00 and 06:00, so you are booked into a hotel. It costs money, which is why arriving late is a risk. On rail and sail journeys an overnight ferry or sleeper is your bed instead.', target: '.sheet [data-act=sleep]' };
+  }
+  if (ui.modal) return null;
+  if (ui.coach.intro) {
+    const names = g.challenge.targets.map((t) => world.cities.get(t).name).join(' and ');
+    return { next: true, target: '#hud .pill:not(.menu)',
+      text: `Welcome to ${here.name}. Your list is ${names}, then home again. Top left shows the time left, the money left and your stamps. The clock on the right shows local time.` };
+  }
+  if (g.city === T && want.includes(T)) {
+    const plan = G.visitPlan(g);
+    if (plan.why) return { text: `The stamp office in ${here.name} is shut for the night. Stay over and get the stamp in the morning.`, target: '.act[data-act=night]' };
+    return { target: '.act[data-act=visit]',
+      text: `You are in ${here.name}, but the stamp office is in town. Going there takes time${plan.transfer ? ` and a ${money(plan.transfer)} airport transfer` : ''}. Tap “Get passport stamped”.` };
+  }
+  const home = want.length ? '' : `Full passport! Now get home to ${there.name} before the time runs out. `;
+  const direct = G.board(g).some((r) => r.leg.to === T && (r.bookable || r.tight));
+  if (ui.filter === 'routes') {
+    const today = G.board(g);
+    const ready = (routeOptions(g, (leg) => legStatus(g.events, leg, world, g.seed, g.clock)).get(T) || [])
+      .some((r) => today.some((x) => x.leg.id === r.legs[0].leg.id && (x.bookable || x.tight)));
+    if (!ready) {
+      return { target: '.act[data-act=night]',
+        text: `${home}Every way to ${there.name} now leaves tomorrow. Tap “Stay the night”: you are booked into a hotel and wake at 06:00.` };
+    }
+    return { target: `.rt-city[data-city="${T}"] .go`,
+      text: `${home}Routes compares the fastest, the cheapest and the best value way to each city. Press Go on a route to ${there.name} to take its first leg.` };
+  }
+  if (g.collected.length === 1 && !ui.coach.routes && want.length) {
+    return { target: '[data-act=filter][data-id=routes]',
+      text: `One stamp down. You are now in the city centre, so a flight needs extra time and a transfer back to the airport. Tap “Routes” to compare ways to ${there.name}.` };
+  }
+  if (!direct) {
+    return { target: '[data-act=filter][data-id=routes]',
+      text: `${home}Nothing more goes straight to ${there.name} today. Tap “Routes” to look for a connection, or stay the night.` };
+  }
+  if (ui.open === T) {
+    return { target: '.opts .go:not([disabled])',
+      text: 'Each line is one departure: when it leaves, when it lands and what it costs. Cheaper ones often leave later. Press Go on the one you want and watch the clock.' };
+  }
+  return { target: `.row[data-id="${T}"]`, text: `${home}This is the departure board. A ★ marks a city on your list. Tap ${there.name}.` };
+}
+
+function coachHTML() {
+  const step = coachStep();
+  if (!step) return '';
+  return `<div class="coach"><b>Coach</b><p>${step.text}</p><div>
+    ${step.next ? '<button class="btn" data-act="coachnext">Got it</button>' : ''}
+    <button class="skip" data-act="again">Leave training</button></div></div>`;
+}
+
+function markCoachTarget() {
+  document.querySelectorAll('.coach-target').forEach((el) => el.classList.remove('coach-target'));
+  const step = coachStep();
+  if (!step?.target) return;
+  const els = document.querySelectorAll(step.target);
+  els.forEach((el) => el.classList.add('coach-target'));
+  if (els[0]?.closest('.rows')) els[0].scrollIntoView({ block: 'nearest' });
+}
+
 // ------------------------------------------------------------------ panel
 
 function render() {
@@ -235,6 +307,7 @@ function render() {
   renderPanel();
   renderMap();
   if (ui.flip) { ui.flip = false; flipBoard(); }
+  markCoachTarget();
 }
 
 function renderHud() {
@@ -262,6 +335,7 @@ function renderPanel() {
   // Rebuilding the panel resets its scroll, so carry the position over unless the board itself is new.
   const keep = ui.flip ? null : { rows: document.querySelector('.rows')?.scrollTop, panel: $('panel').scrollTop };
   $('panel').innerHTML = `
+    ${ui.modal ? '' : coachHTML()}
     ${latest ? `<button class="ticker" data-act="log"><b>NEWS</b><span>${latest.text}</span></button>` : ''}
     <header class="where">
       <div>
@@ -372,7 +446,7 @@ function renderRoutes(today, want) {
           <span class="note">arrives ${fmtDay(d.tz, r.t).slice(0, 3)} ${fmtTime(d.tz, r.t)} · ${fmtDur((r.t - g.clock) / MIN)} · ${tags}</span>
         </div><div class="rt-side"><b>${money(r.money)}</b>${go}</div></div>`;
     }).join('');
-    return `<div class="rt-city"><h3>${d.emoji} ${d.name}</h3>${cards}</div>`;
+    return `<div class="rt-city" data-city="${id}"><h3>${d.emoji} ${d.name}</h3>${cards}</div>`;
   }).join('');
   return blocks + '<p class="rt-foot">Prices include an estimate for hotel nights spent waiting. Only the first leg is booked; plans can change on the way.</p>';
 }
@@ -427,15 +501,38 @@ function flipBoard() {
 
 // ------------------------------------------------------------------ modals
 
-const SHEETS = { menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
+const SHEETS = { splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
 
 function renderModal() {
   const el = $('modal');
   if (!ui.modal) { el.innerHTML = ''; return; }
   // Redrawing the sheet would jump it back to the top, so keep its scroll while the same sheet stays open.
   const old = el.querySelector('.sheet'), keep = old?.classList.contains(ui.modal) ? old.scrollTop : 0;
-  el.innerHTML = `<div class="sheet ${ui.modal}">${SHEETS[ui.modal]()}</div>`;
+  el.innerHTML = `<div class="sheet ${ui.modal}">${['stamp', 'night'].includes(ui.modal) ? coachHTML() : ''}${SHEETS[ui.modal]()}</div>`;
   el.querySelector('.sheet').scrollTop = keep;
+}
+
+function splashSheet() {
+  const steps = [
+    ['🛫', 'Read the departure board', 'You only see what leaves from where you are. Pick a departure and go; the clock jumps forward to your arrival.'],
+    ['🛂', 'Collect your stamps', 'In each city on your list, go into town to get your passport stamped. It takes time, and from an airport it costs a transfer.'],
+    ['🕙', 'Watch the clock', 'Nothing leaves between 22:00 and 06:00. Get caught out and you pay for a hotel. An overnight ferry or sleeper train is a bed that moves.'],
+    ['💷', 'Mind the money', 'Fares change with distance, season and time of day. If you cannot pay for a room, the journey is over.'],
+    ['📣', 'Expect trouble', 'Strikes, storms and closures are announced in the news strip. Plan around them, or run for a tight connection and risk the fare.'],
+    ['⭐', 'Score', 'One star for getting home with every stamp, one for thrift, one for speed. Secret bonus tickets add or cost points.'],
+  ].map(([icon, title, text]) => `<li><i>${icon}</i><div><b>${title}</b><span>${text}</span></div></li>`).join('');
+  const buttons = g
+    ? '<button class="btn big" data-act="close">Back to the journey</button>'
+    : `<button class="btn big" data-act="train">Start with a guided training flight</button>
+       <button class="btn ghost wide" data-act="journeys">Choose a journey</button>`;
+  return `
+    <h1>Viag<span>gi</span></h1>
+    <div class="tagline">The Great Race</div>
+    <p class="pitch">A race against the clock and your wallet. You are handed a list of cities, a deadline and a budget. Get your passport stamped in every city and make it home in time.</p>
+    <h3 class="how">How to play</h3>
+    <ol class="steps">${steps}</ol>
+    <p class="modes"><b>✈ By air</b> covers 45 cities by plane. <b>🚆 Rail and sail</b> is trains, sleepers and ferries only, across borders or within one country.</p>
+    <div class="startbar">${buttons}</div>`;
 }
 
 function menuSheet() {
@@ -447,6 +544,7 @@ function menuSheet() {
       <button class="btn big" data-act="close">Keep playing</button>
       <button class="btn ghost" data-act="passport">Passport</button>
       <button class="btn ghost" data-act="log">Journey log</button>
+      <button class="btn ghost" data-act="help">How to play</button>
       <button class="btn ghost" data-act="quit">End this journey and see my score</button>
       <button class="btn ghost" data-act="again">Abandon and return to the start screen</button>
     </div>`;
@@ -466,9 +564,8 @@ function startSheet() {
   };
   const pack = (id) => ALL_CHALLENGES.filter((ch) => ch.pack === id).map(card).join('');
   return `
-    <h1>Viag<span>gi</span></h1>
-    <div class="tagline">The Great Race</div>
-    <p>Race round Europe on a realistic transport network. Get your passport stamped in every city on your list and be home before the clock and the money run out.</p>
+    <h2>Choose a journey</h2>
+    <p><button class="link" data-act="help">How to play</button> · <button class="link" data-act="train">Guided training flight</button></p>
     <div class="packhead first"><b>✈ By air</b><span>Fly between 45 cities. Airports are out of town, so allow for transfers.</span></div>
     <div class="cards">${pack('air')}</div>
     <div class="packhead"><b>🚆 Rail and sail</b><span>No flying. International journeys show cross-border trains between major cities; single-country journeys show that country’s network. Ferries offer a slower, cheaper way round: a free shuttle links each port with the station, and an overnight sailing or a sleeper train is your bed for the night.</span></div>
@@ -552,9 +649,9 @@ function shareText(s) {
 
 function endSheet() {
   const s = G.score(g), ch = g.challenge;
-  const title = s.won ? 'Home with a full passport!' : g.over === 'timeout' ? 'Out of time' : g.over === 'broke' ? 'Out of money' : 'Journey abandoned';
+  const title = s.won && ch.training ? 'Training complete' : s.won ? 'Home with a full passport!' : g.over === 'timeout' ? 'Out of time' : g.over === 'broke' ? 'Out of money' : 'Journey abandoned';
   const got = ch.targets.filter((t) => g.collected.includes(t)).length;
-  const sub = s.won ? `${ch.name} complete.` : `${g.over === 'broke' ? 'You could not pay for a hotel room. ' : ''}${got} of ${ch.targets.length} stamps collected.`;
+  const sub = s.won && ch.training ? 'You know the board, the stamps and the clock. Real journeys add bonus tickets, strikes and storms.' : s.won ? `${ch.name} complete.` : `${g.over === 'broke' ? 'You could not pay for a hotel room. ' : ''}${got} of ${ch.targets.length} stamps collected.`;
   const star = (on) => `<span class="${on ? 'on' : ''}">★</span>`;
   const best = ch.key && store.get(`tg-daily-${ch.key}`);
   return `
@@ -575,7 +672,7 @@ function endSheet() {
     <ul class="log">${logItems()}</ul>
     <div class="row-btns">
       <button class="btn ghost" data-act="share">Copy result</button>
-      <button class="btn" data-act="again">Play again</button>
+      <button class="btn" data-act="again">${ch.training ? 'Choose a journey' : 'Play again'}</button>
     </div>`;
 }
 
@@ -612,9 +709,18 @@ function start() {
   showNetwork();
   g = G.newGame(world, ch, params.get('seed') || ch.seed || undefined);
   $('toasts').innerHTML = '';
-  Object.assign(ui, { open: null, filter: 'all', peek: null, busy: false, modal: 'tickets', seenNews: 0, keep: [0] });
+  Object.assign(ui, { open: null, filter: 'all', peek: null, busy: false, modal: 'tickets', seenNews: 0, keep: [0], coach: null });
   render();
   frame();
+}
+
+function startTraining() {
+  world = createWorld(EUROPE, TRAINING.modes, TRAINING);
+  showNetwork();
+  g = G.newGame(world, TRAINING, TRAINING.seed);
+  $('toasts').innerHTML = '';
+  Object.assign(ui, { open: null, filter: 'all', peek: null, busy: false, seenNews: 0, keep: [], coach: { intro: true, routes: false } });
+  afterMove();
 }
 
 function depart() {
@@ -644,7 +750,11 @@ const actions = {
   depart,
   again: () => { g = null; ui.modal = 'start'; popup?.remove(); $('toasts').innerHTML = ''; },
   open: (id) => { ui.open = ui.open === id ? null : id; },
-  filter: (id) => { ui.filter = id; ui.open = null; ui.flip = true; },
+  filter: (id) => { ui.filter = id; ui.open = null; ui.flip = true; if (id === 'routes' && ui.coach) ui.coach.routes = true; },
+  train: startTraining,
+  journeys: () => { ui.modal = 'start'; },
+  help: () => { ui.modal = 'splash'; },
+  coachnext: () => { ui.coach.intro = false; },
   go: (id) => go(id),
   goflex: (id) => go(id, true),
   visit: () => {
@@ -666,7 +776,7 @@ const actions = {
   },
 };
 
-const SELF_RENDERING = ['start', 'depart', 'go', 'goflex', 'visit', 'sleep', 'share'];
+const SELF_RENDERING = ['start', 'train', 'depart', 'go', 'goflex', 'visit', 'sleep', 'share'];
 
 document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]');

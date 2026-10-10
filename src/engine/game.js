@@ -31,8 +31,9 @@ export function newGame(world, challenge, seed = String(Date.now())) {
     lookups: RULES.lookupsPerDay, path: [], log: [], nights: 0, hotels: 0, moves: 0, over: null,
     port: null, landed: [challenge.home], carriers: [], trains: 0, lowcost: false, tickets: [],
   };
-  g.events = generateEvents(world, challenge, start, seed);
-  g.offer = drawTickets(world, challenge, seed);
+  // Training is a calm first trip: no disruption and no bonus tickets.
+  g.events = challenge.training ? [] : generateEvents(world, challenge, start, seed);
+  g.offer = challenge.training ? [] : drawTickets(world, challenge, seed);
   return g;
 }
 
@@ -171,7 +172,7 @@ export function visit(g) {
   const c = here(g), plan = visitPlan(g);
   const notes = [];
   let mins = plan.mins;
-  if (g.place === 'airport' && rand(`${g.seed}|jam|${g.moves}|${c.id}`) < RULES.jamChance) {
+  if (g.place === 'airport' && !g.challenge.training && rand(`${g.seed}|jam|${g.moves}|${c.id}`) < RULES.jamChance) {
     const jam = round5(30 + rand(`${g.seed}|jam-len|${g.moves}`) * 45);
     mins += jam;
     notes.push(`Traffic jam on the way into ${c.name}: ${jam} minutes lost.`);

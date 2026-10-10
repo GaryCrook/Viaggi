@@ -35,6 +35,7 @@ choose under pressure.
 - **Bonus tickets.** Two secret objectives drawn at the start, keep one or both, ±75 points.
 - **Scoring.** Three stars (finish, under 80% of budget, under par time) plus points.
 - **Information.** Own board only, two look-ups of other cities per day, tomorrow's board shown read-only, and a Routes tab giving fastest / cheapest / best-value ways to each listed city.
+- **Splash and training.** The game opens on a splash page (purpose, how to play). "Training Flight" is a guided London–Paris–Amsterdam trip with no disruption or tickets; a coach box and a pulsing highlight show the next step, worked out from the game state (`coachStep` in `src/main.js`).
 - **Daily challenge.** Four cities from the date, same timetable and disruption for everyone, limits calibrated automatically, best score stored locally, copyable result.
 
 ## Air and surface are separate games
