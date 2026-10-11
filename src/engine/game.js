@@ -16,7 +16,7 @@ export const RULES = {
   jamChance: 0.18,
   costStar: 0.8,         // share of budget to beat for the thrift star
   runMinSlack: 0.45,     // you can run for a departure with at least this share of the normal lead time
-  flexPremium: 0.25,     // flexible ticket: fare back if you miss it
+  flexPremium: 0.25,     // flexible ticket: miss it and you are moved to the next departure, paying any fare difference
   ticketPoints: 75,
 };
 
@@ -104,9 +104,11 @@ export const hasBerth = (leg) => !!leg.berth;
 
 export const runSucceeds = (g, row) => !row.tight || rand(`${g.seed}|run|${row.leg.id}`) < row.tight.p;
 
-// Returns { missed, notes }. A tight departure can be missed: the fare is lost
-// unless the ticket was flexible.
-export function book(g, row, { flex = false } = {}) {
+// Returns { missed, notes, ... }. A tight departure can be missed. A standard
+// fare is then lost. A flexible fare is kept as `credit` towards the next
+// departure to the same place (see the UI), or refunded if there is none.
+// `credit` on a later booking is that carried fare: only the difference is charged.
+export function book(g, row, { flex = false, credit = 0 } = {}) {
   const { leg } = row;
   const from = g.city, origin = g.world.cities.get(from);
   const terminal = { air: 'airport', rail: 'city', ferry: 'port' }[leg.mode];
@@ -116,20 +118,20 @@ export function book(g, row, { flex = false } = {}) {
   g.moves++;
   if (!runSucceeds(g, row)) {
     const lost = flex ? row.lead.cost + premium : row.total;
-    g.spent += lost;
+    g.spent += row.total + premium;                      // a flexible fare stays paid for now, as credit
     g.clock = row.dep + 10 * MIN;
     // You got as far as the departure point, not onto the ship.
     g.place = terminal;
     g.port = leg.mode === 'ferry' ? leg.port : null;
-    g.log.push({ t: row.dep, tz: origin.tz, icon: '🏃', text: `Missed ${leg.no} to ${g.world.cities.get(leg.to).name}`, cost: lost });
+    g.log.push({ t: row.dep, tz: origin.tz, icon: '🏃', text: `Missed ${leg.no} to ${g.world.cities.get(leg.to).name}`, cost: row.total + premium });
     finish(g);
-    return { missed: true, notes: [flex
-      ? `The doors closed on ${leg.no}. Your flexible fare is refunded.`
-      : `The doors closed on ${leg.no}. The ${leg.fare} pound fare is gone.`] };
+    // A missed departure is not rebooked for you: a standard fare is simply lost,
+    // a flexible fare comes back, and either way the next ticket is a new purchase.
+    return { missed: true, notes: [], lost, credit: flex ? leg.fare : 0, premium, transfer: row.lead.cost };
   }
   const to = row.divertTo ?? leg.to, dest = g.world.cities.get(to);
-  const notes = [];
-  g.spent += row.total + premium;
+  const notes = [], charge = Math.max(0, row.total - credit) + premium;
+  g.spent += charge;
   g.clock = row.arr;
   g.city = to;
   g.place = terminal;
@@ -140,7 +142,7 @@ export function book(g, row, { flex = false } = {}) {
   if (leg.mode === 'rail') g.trains++;
   else if (leg.mode === 'air' && !g.carriers.includes(leg.code)) g.carriers.push(leg.code);
   if (leg.kind === 'lowcost') g.lowcost = true;
-  g.log.push({ t: row.dep, tz: origin.tz, icon, text: `${leg.no} ${origin.name} → ${dest.name}`, cost: row.total + premium });
+  g.log.push({ t: row.dep, tz: origin.tz, icon, text: `${leg.no} ${origin.name} → ${dest.name}${credit ? ' (rebooked)' : ''}`, cost: charge });
   if (hasBerth(leg) && isNight(g)) {
     // Docked in the small hours: stay in the cabin until morning.
     g.clock = nextWake(g);
@@ -150,6 +152,12 @@ export function book(g, row, { flex = false } = {}) {
   if (row.divertTo) notes.push(`Diverted! ${g.world.cities.get(leg.to).name} airport is closed, so you have landed in ${dest.name}.`);
   finish(g);
   return { missed: false, notes };
+}
+
+// Give back a flexible fare that could not be used on a later departure.
+export function refund(g, amount) {
+  g.spent -= amount;
+  g.log.push({ t: g.clock, tz: here(g).tz, icon: '↩', text: 'Flexible fare refunded', cost: -amount });
 }
 
 export function visitPlan(g) {
@@ -195,6 +203,13 @@ export function hotelCost(g) {
   const c = here(g);
   const room = Math.round(65 * c.idx), meals = Math.round(22 * c.idx), transfer = g.place === 'airport' ? 6 : 0;
   return { room, meals, transfer, total: room + meals + transfer };
+}
+
+// Out of money: nothing you can board, no stamp you can pay for, and no room
+// you can afford. The journey ends there.
+export function stranded(g) {
+  return !g.over && hotelCost(g).total > remaining(g) && !!visitPlan(g).why
+    && !board(g).some((r) => r.bookable || r.tight);
 }
 
 export function nextWake(g) {

@@ -391,3 +391,40 @@ button:disabled { cursor: not-allowed; }
 
 .board-head { flex-wrap: wrap; }
 .peeknote { flex-basis: 100%; font-size: 11px; color: #8a97a6; font-family: var(--mono); }
+
+.st-late { color: #c98a6b; }
+
+/* ---------- Hurry home ---------- */
+.gohome { margin: 12px 18px 0; padding: 10px 14px; border-radius: 14px; background: var(--go); color: #fff; animation: homecall 1.6s ease-in-out infinite; }
+.gohome b { display: block; font-size: 15px; }
+.gohome span { font-size: 13px; opacity: .9; }
+@keyframes homecall { 50% { box-shadow: 0 0 0 7px rgb(31 122 92 / .25); } }
+.sheet p.rush { font-weight: 700; font-size: 17px; color: var(--go); }
+.pin.home.rush i { border-color: var(--go); animation: homepin 1.2s ease-in-out infinite; }
+@keyframes homepin { 50% { box-shadow: 0 0 0 10px rgb(31 122 92 / .35); transform: translate(-50%, -50%) scale(1.15); } }
+
+/* ---------- Missed departure ---------- */
+.bill .bad { color: #b4322a; font-weight: 700; }
+.bill .ok { color: var(--go); font-weight: 700; }
+.bill.rebook li { align-items: center; font-size: 14px; }
+.bill.rebook .btn { margin-left: auto; white-space: nowrap; }
+
+.sheet p.lost { font-weight: 700; color: #b4322a; }
+.row-btns .btn.ghost { font-size: 13px; }
+
+/* ---------- The long walk home ---------- */
+.walk { display: block; width: 100%; border-radius: 12px; margin: 6px 0 12px; }
+.walk .lane { animation: lane 1.4s linear infinite; }
+@keyframes lane { to { stroke-dashoffset: 40; } }
+.walk .leg { transform-box: fill-box; transform-origin: 50% 0; }
+.walk .leg.a { animation: stepA 1s ease-in-out infinite; }
+.walk .leg.b { animation: stepA 1s ease-in-out infinite reverse; }
+@keyframes stepA { 0%, 100% { transform: rotate(20deg); } 50% { transform: rotate(-20deg); } }
+.walk .arm { transform-box: fill-box; transform-origin: 100% 0; animation: stepA 1s ease-in-out infinite; }
+.walk .walker { animation: trudge 1s ease-in-out infinite; }
+@keyframes trudge { 0%, 50%, 100% { translate: 0 0; } 25%, 75% { translate: 0 1.5px; } }
+.walk .post { animation: drift 14s linear infinite; }
+@keyframes drift { from { transform: translateX(90px); } to { transform: translateX(-330px); } }
+.walk .rain { animation: rain .7s linear infinite; }
+@keyframes rain { from { transform: translateY(-2px); opacity: 1; } to { transform: translateY(8px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .walk * { animation: none !important; } }

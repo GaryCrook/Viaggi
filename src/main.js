@@ -9,7 +9,7 @@ import * as G from './engine/game.js';
 import { legStatus } from './engine/events.js';
 import { sfx } from './sfx.js';
 import { routeOptions } from './engine/planner.js';
-import { arc, hash, local, fmtTime, fmtDay, fmtDur, MIN } from './engine/util.js';
+import { arc, hash, local, distKm, fmtTime, fmtDay, fmtDur, MIN } from './engine/util.js';
 
 // Swap for a Mapbox style URL + access token when moving to the Mapbox SDK.
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
@@ -116,6 +116,7 @@ function renderMap() {
     const cls = ['pin'];
     if (!world.services.get(id).length) cls.push('off');
     if (id === g.challenge.home) cls.push('home');
+    if (id === g.challenge.home && id !== g.city && g.challenge.targets.every((t) => g.collected.includes(t))) cls.push('rush');
     if (wanted.includes(id)) cls.push('target');
     if (g.collected.includes(id)) cls.push('done');
     if (id === g.city) cls.push('here');
@@ -354,7 +355,7 @@ function coachStep() {
   }
   if (ui.open === T && onlyRisky) {
     return { target: '.opts .go.run, .act[data-act=night]',
-      text: `You are too late to stroll to this one. “Run” gambles the fare on the chance shown; “Flex” costs more but refunds you if you miss it. Or play safe and stay the night: nothing leaves after 22:00.` };
+      text: `You are too late to stroll to this one. “Run” gambles the fare on the chance shown; “Flex” costs more, but if you miss it you are moved to the next departure. Or play safe and stay the night: nothing leaves after 22:00.` };
   }
   if (ui.open === T) {
     return { target: '.opts .go:not([disabled])',
@@ -417,8 +418,13 @@ function renderPanel() {
 
   // Rebuilding the panel resets its scroll, so carry the position over unless the board itself is new.
   const keep = ui.flip ? null : { rows: document.querySelector('.rows')?.scrollTop, panel: $('panel').scrollTop };
+  const homeCity = world.cities.get(g.challenge.home);
+  const allDone = g.challenge.targets.every((t) => g.collected.includes(t));
+  const hurry = allDone && !g.over
+    ? `<div class="gohome"><b>🏁 Full passport! Hurry home to ${homeCity.name}.</b><span>${g.challenge.untimed ? 'The clock is still running.' : `${clockPill(g.clock)[1]} left to get there.`}</span></div>` : '';
   $('panel').innerHTML = `
     ${ui.modal ? '' : coachHTML()}
+    ${hurry}
     ${latest ? `<button class="ticker" data-act="log"><b>NEWS</b><span>${latest.text}</span></button>` : ''}
     <header class="where">
       <div>
@@ -475,7 +481,8 @@ function renderBoard() {
     const more = rows.length > 1 ? ` · ${rows.length} ${later ? 'tomorrow' : 'today'}` : '';
     const st = lead.status === 'cancelled' ? '<span class="st-cancelled">CANCELLED</span> · '
       : lead.status === 'delayed' ? `<span class="st-delayed">DELAYED from ${fmtTime(c.tz, leg.dep)}</span> · `
-      : lead.tight && !ui.peek && !later ? '<span class="st-delayed">RUN FOR IT</span> · ' : '';
+      : lead.tight && !ui.peek && !later ? '<span class="st-delayed">RUN FOR IT</span> · '
+      : lead.why === 'late' && !ui.peek && !later ? `<span class="st-late">TOO LATE · NEED ${fmtDur(lead.lead.min).toUpperCase()}</span> · ` : '';
     const key = later ? `t:${to}` : to;
     const head = `
       <button class="row ${dim ? 'dim' : ''} ${ui.open === key ? 'open' : ''}" data-act="open" data-id="${key}">
@@ -548,14 +555,18 @@ function renderOption(r, from, to, later) {
   if (!readOnly) r.lead.links.forEach((l) => notes.push(`${l.kind} ${fmtDur(l.mins)} ${l === leg.port ? 'to' : 'from'} ${l.name}`));
   if (leg.berth) notes.push(`${leg.sleeper ? 'sleeper: ' : ''}berth included, no hotel`);
   if (leg.seats) notes.push(`${leg.seats} seat${leg.seats > 1 ? 's' : ''} left`);
-  if (!readOnly && r.tight) notes.push(`<span class="st-delayed">${Math.round(r.tight.p * 100)}% chance you make it</span>`);
-  else if (!readOnly && r.why === 'late') notes.push(`Needs ${fmtDur(r.lead.min)} to make it`);
+  if (!readOnly && r.tight) notes.push(`<span class="st-delayed">${Math.round(r.tight.p * 100)}% chance you make it</span> · miss it and Run loses the fare; Flex moves you to the next departure`);
+  else if (!readOnly && r.why === 'late') {
+    notes.push(leg.mode === 'air' && g.place !== 'airport'
+      ? `Too late: ${fmtDur(G.here(g).xfer)} to the airport plus ${fmtDur(G.RULES.airFromCity)} check-in`
+      : `Too late: you need ${fmtDur(r.lead.min)} before departure`);
+  }
   if (!readOnly && r.why === 'funds') notes.push('Over budget');
   let btn = `<b>${money(leg.fare)}</b>`;
   if (!readOnly && r.tight) {
     btn = `<span class="pair">
       <button class="go run" data-act="go" data-id="${leg.id}" title="Miss it and the fare is lost">Run ${money(r.total)}</button>
-      <button class="go flex" data-act="goflex" data-id="${leg.id}" title="Miss it and the fare is refunded" ${r.flexTotal > G.remaining(g) ? 'disabled' : ''}>Flex ${money(r.flexTotal)}</button></span>`;
+      <button class="go flex" data-act="goflex" data-id="${leg.id}" title="Miss it and you are moved to the next departure, paying any difference" ${r.flexTotal > G.remaining(g) ? 'disabled' : ''}>Flex ${money(r.flexTotal)}</button></span>`;
   } else if (!readOnly) {
     btn = `<button class="go" data-act="go" data-id="${leg.id}" ${r.bookable ? '' : 'disabled'}>Go ${money(r.total)}</button>`;
   }
@@ -586,7 +597,7 @@ function flipBoard() {
 
 // ------------------------------------------------------------------ modals
 
-const SHEETS = { times: timesSheet, splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
+const SHEETS = { missed: missedSheet, times: timesSheet, splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
 
 function renderModal() {
   const el = $('modal');
@@ -697,6 +708,54 @@ function ticketSheet() {
     <button class="btn big" data-act="depart" ${ui.keep.length ? '' : 'disabled'}>${ui.keep.length ? `Keep ${ui.keep.length === 2 ? 'both' : 'one'} and depart` : 'Keep at least one'}</button>`;
 }
 
+// Shown when a run for a tight departure fails. A flexible ticket moves you to
+// the next departure and charges any difference; a standard ticket is lost.
+function missedSheet() {
+  const m = ui.missed, { leg } = m.row, c = G.here(g), d = world.cities.get(leg.to);
+  const what = leg.mode === 'air' ? 'flight' : leg.mode === 'rail' ? 'train' : 'ferry';
+  const head = `<h2>You missed it</h2>
+    <p>The doors closed on ${leg.no} to ${d.name} before you got there. You are still in ${c.name}, and it is now ${fmtTime(c.tz, g.clock)}.</p>`;
+  const extras = `${m.out.premium ? `<li>Flexible supplement <span>${money(m.out.premium)} paid</span></li>` : ''}
+      ${m.out.transfer ? `<li>Getting to the ${what} <span>${money(m.out.transfer)} paid</span></li>` : ''}`;
+
+  if (m.flex && m.next) {
+    const n = m.next, extra = Math.max(0, n.total - m.out.credit);
+    return `${head}
+      <p class="rush">Your flexible ticket has moved you to ${n.leg.no} at ${fmtTime(c.tz, n.dep)}.</p>
+      <ul class="bill">
+        <li>Your ticket on ${leg.no} <span>${money(m.out.credit)} carried over</span></li>
+        <li>Fare on ${n.leg.no} <span>${money(n.total)}</span></li>
+        <li class="sum">${extra ? 'Difference to pay' : 'Nothing more to pay'} <span class="${extra ? 'bad' : 'ok'}">${money(extra)}</span></li>
+        ${extras}
+      </ul>
+      ${extra ? '' : n.total < m.out.credit ? '<p>The new fare is lower, but a flexible ticket does not pay back the difference.</p>' : ''}
+      <div class="row-btns">
+        <button class="btn ghost" data-act="refund">Cancel and take the ${money(m.out.credit)} back</button>
+        <button class="btn" data-act="rebook">Board the ${fmtTime(c.tz, n.dep)} to ${d.name}</button>
+      </div>`;
+  }
+  if (m.flex) {
+    return `${head}
+      <p class="rush">Nothing else you can reach goes to ${d.name} today, so your flexible fare has been refunded.</p>
+      <ul class="bill"><li>Your ticket on ${leg.no} <span class="ok">${money(m.out.credit)} refunded</span></li>${extras}</ul>
+      <p>Check the Routes tab for a connection, or stay the night.</p>
+      <div class="row-btns"><button class="btn" data-act="close">Back to the board</button></div>`;
+  }
+  const next = G.board(g).filter((r) => r.leg.to === leg.to && (r.bookable || r.tight)).slice(0, 3);
+  const options = next.map((r) => `<li><b>${fmtTime(c.tz, r.dep)}</b> ${r.leg.no} · ${r.leg.carrier}
+      <button class="btn" data-act="go" data-id="${r.leg.id}">${r.tight ? `Run ${Math.round(r.tight.p * 100)}%` : 'Book'} ${money(r.total)}</button></li>`).join('');
+  return `${head}
+    <p class="lost">You did not have a flexible ticket, so the fare is lost and you need to buy a new ticket to travel on.</p>
+    <ul class="bill">
+      <li>Standard ticket on ${leg.no} <span class="bad">${money(leg.fare)} lost</span></li>
+      ${extras}
+      <li class="sum">This cost you <span>${money(m.out.lost)}</span></li>
+    </ul>
+    ${options ? `<p class="hint">Next to ${d.name} today</p><ul class="bill next rebook">${options}</ul>`
+      : `<p><b>Nothing else goes to ${d.name} today.</b> Check the Routes tab for a connection, or stay the night.</p>`}
+    <div class="row-btns"><button class="btn ghost" data-act="close">Back to the board</button></div>`;
+}
+
 function nightSheet() {
   const c = G.here(g), h = G.hotelCost(g), forced = G.isNight(g), broke = h.total > G.remaining(g);
   const where = g.place === 'airport' ? 'the airport hotel' : g.place === 'port' ? 'a hotel by the port' : byRail() ? 'a hotel by the station' : 'a city hotel';
@@ -728,7 +787,7 @@ function stampSheet() {
     <div class="page thump">${stampHTML(c.id, true)}</div>
     <h2>${c.name}</h2>
     <p class="postcard">${POSTCARDS[c.id] || ''}</p>
-    <p>${left ? `${left} more stamp${left > 1 ? 's' : ''} to collect.` : `That’s the full set. Now get home to ${world.cities.get(g.challenge.home).name}.`}</p>
+    ${left ? `<p>${left} more stamp${left > 1 ? 's' : ''} to collect.</p>` : `<p class="rush">🏁 That’s the full set. Now hurry home to ${world.cities.get(g.challenge.home).name}!</p>`}
     <button class="btn big" data-act="close">Back to the journey</button>`;
 }
 
@@ -740,7 +799,7 @@ function passportSheet() {
 }
 
 function logItems() {
-  return g.log.map((l) => `<li><time>${fmtDay(l.tz, l.t).slice(0, 3)} ${fmtTime(l.tz, l.t)}</time><span>${l.icon}</span><span>${l.text}</span><span class="c">${l.cost ? money(l.cost) : ''}</span></li>`).join('');
+  return g.log.map((l) => `<li><time>${fmtDay(l.tz, l.t).slice(0, 3)} ${fmtTime(l.tz, l.t)}</time><span>${l.icon}</span><span>${l.text}</span><span class="c">${l.cost < 0 ? `+${money(-l.cost)}` : l.cost ? money(l.cost) : ''}</span></li>`).join('');
 }
 
 function logSheet() {
@@ -758,6 +817,37 @@ function shareText(s) {
     `${stars} ${s.points} pts`, `${fmtDur(s.hours * 60)} · ${money(s.spent)} · 🎫 ${s.ticketsDone}/${s.tickets.length}`, route].join('\n');
 }
 
+// The long walk home: shown when the money runs out.
+function brokeHTML() {
+  const here = G.here(g), home = world.cities.get(g.challenge.home);
+  const miles = Math.round(distKm(here, home) * 0.621 / 5) * 5;
+  const where = here.id === home.id ? `${home.name.toUpperCase()}` : `${home.name.toUpperCase()} ${miles.toLocaleString('en-GB')} mi`;
+  return `
+    <svg class="walk" viewBox="0 0 320 150" role="img" aria-label="A traveller trudging home with an empty wallet">
+      <defs><linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#27384d"/><stop offset="1" stop-color="#8d7f8f"/></linearGradient></defs>
+      <rect width="320" height="118" fill="url(#dusk)"/>
+      <circle cx="262" cy="30" r="13" fill="#f3e9c9" opacity=".9"/>
+      <path d="M0 118 Q60 92 120 108 T240 100 T320 110 V118z" fill="#3b4a5c"/>
+      <rect y="118" width="320" height="32" fill="#2a3038"/>
+      <path class="lane" d="M-40 134H360" stroke="#d8c98f" stroke-width="3" stroke-dasharray="22 18"/>
+      <g class="post"><rect x="236" y="62" width="4" height="58" fill="#6b5a45"/>
+        <path d="M196 63h84l11 10-11 10h-84z" fill="#f3ede1" stroke="#1c2b3a" stroke-width="1.5"/>
+        <text x="240" y="76.5" text-anchor="middle" font-size="7.5" font-weight="700" fill="#1c2b3a" textLength="${Math.min(78, where.length * 5.2)}" lengthAdjust="spacingAndGlyphs">${where}</text></g>
+      <g class="cloud"><path d="M98 34a9 9 0 0117-4 8 8 0 0113 6 7 7 0 01-2 13H100a8 8 0 01-2-15z" fill="#c9d2dc"/>
+        <path class="rain" d="M104 54l-2 7M114 54l-2 7M124 54l-2 7" stroke="#9fc3e6" stroke-width="2" stroke-linecap="round"/></g>
+      <g class="walker" transform="translate(116 120)" fill="none" stroke="#f3ede1" stroke-width="4" stroke-linecap="round">
+        <line class="leg a" x1="0" y1="-26" x2="0" y2="0"/><line class="leg b" x1="0" y1="-26" x2="0" y2="0"/>
+        <path d="M3 -54 Q-2 -40 0 -26"/>
+        <line class="arm" x1="2" y1="-48" x2="-7" y2="-30"/>
+        <path d="M2 -48 L12 -32"/>
+        <rect x="6" y="-32" width="17" height="13" rx="2" fill="#a0522d" stroke="#f3ede1" stroke-width="2"/>
+        <circle cx="6" cy="-63" r="8" fill="#f3ede1" stroke="none"/>
+        <path d="M5 -59 q3 -3 6 0" stroke="#1c2b3a" stroke-width="1.6"/><circle cx="5" cy="-65" r="1.1" fill="#1c2b3a" stroke="none"/><circle cx="10" cy="-65" r="1.1" fill="#1c2b3a" stroke="none"/>
+      </g>
+    </svg>
+    <p class="lost">You have run out of money. With ${money(Math.max(0, G.remaining(g)))} left you cannot pay for a ticket or a room, so the journey ends in ${here.name}. It is a long walk home.</p>`;
+}
+
 function freeEndSheet() {
   const s = G.score(g), ch = g.challenge, mins = Math.round(s.hours * 60);
   const list = bestTimes(ch);
@@ -773,6 +863,7 @@ function freeEndSheet() {
   } else if (s.won) entry = '<p class="rank">Outside the top ten this time.</p>';
   return `
     <h2>${title}</h2>
+    ${g.over === 'broke' ? brokeHTML() : ''}
     <p>${s.won ? `${ch.name}, no time limit.` : `${got} of ${ch.targets.length} stamps collected. No time recorded.`}</p>
     <div class="facts">
       <div><small>Time</small><b>${fmtDur(mins)}</b></div>
@@ -791,11 +882,11 @@ function endSheet() {
   const s = G.score(g), ch = g.challenge;
   const title = s.won && ch.training ? 'Training complete' : s.won ? 'Home with a full passport!' : g.over === 'timeout' ? 'Out of time' : g.over === 'broke' ? 'Out of money' : 'Journey abandoned';
   const got = ch.targets.filter((t) => g.collected.includes(t)).length;
-  const sub = s.won && ch.training ? 'You know the board, the stamps and the clock. Real journeys add bonus tickets, strikes and storms.' : s.won ? `${ch.name} complete.` : `${g.over === 'broke' ? 'You could not pay for a hotel room. ' : ''}${got} of ${ch.targets.length} stamps collected.`;
+  const sub = s.won && ch.training ? 'You know the board, the stamps and the clock. Real journeys add bonus tickets, strikes and storms.' : s.won ? `${ch.name} complete.` : `${got} of ${ch.targets.length} stamps collected.`;
   const star = (on) => `<span class="${on ? 'on' : ''}">★</span>`;
   const best = ch.key && store.get(`tg-daily-${ch.key}`);
   return `
-    <h2>${title}</h2><p>${sub}</p>
+    <h2>${title}</h2>${g.over === 'broke' ? brokeHTML() : ''}<p>${sub}</p>
     <div class="stars">${star(s.won)}${star(s.thrift)}${star(s.speed)}<b>${s.points}<small>points</small></b></div>
     <ul class="checks">
       <li class="${s.won ? 'on' : ''}">★ Every stamp, home inside ${ch.hours}h</li>
@@ -827,6 +918,7 @@ function toast(text, kind = '') {
 }
 
 function afterMove(notes = [], modal = null) {
+  if (G.stranded(g)) g.over = 'broke';
   if (g.over) $('toasts').innerHTML = '';
   else notes.forEach((n) => toast(n));
   const all = G.news(g);
@@ -877,19 +969,28 @@ function depart() {
   afterMove([`${fmtDay(G.here(g).tz, g.clock)}, 08:00. ${ch.targets.length} stamps, ${ch.hours} hours, ${money(ch.budget)}. Go!`]);
 }
 
-async function go(legId, flex = false) {
+async function go(legId, flex = false, credit = 0) {
   const row = G.board(g).find((r) => r.leg.id === legId);
   if (!row || !(row.bookable || row.tight) || ui.busy) return;
   popup?.remove();
   sfx.unlock();
-  if (!G.runSucceeds(g, row)) { afterMove(G.book(g, row, { flex }).notes); return; }
+  ui.modal = null;
+  if (!G.runSucceeds(g, row)) {
+    const out = G.book(g, row, { flex });
+    // Flexible: line up the next departure you can comfortably make; if there is none, refund.
+    const next = flex ? G.board(g).find((r) => r.leg.to === row.leg.to && r.bookable && r.total - out.credit <= G.remaining(g)) : null;
+    if (flex && !next) G.refund(g, out.credit);
+    ui.missed = { row, flex, out, next };
+    afterMove([], 'missed');
+    return;
+  }
   const from = G.here(g), to = world.cities.get(row.divertTo ?? row.leg.to);
   ui.busy = true; ui.open = row.leg.to;
   render();
   map.fitBounds(new maplibregl.LngLatBounds([from.lon, from.lat], [from.lon, from.lat]).extend([to.lon, to.lat]),
     { padding: 90, maxZoom: 6, duration: 500 });
   await travel(from, to, row);
-  afterMove(G.book(g, row, { flex }).notes);
+  afterMove(G.book(g, row, { flex, credit }).notes);
 }
 
 const actions = {
@@ -915,6 +1016,8 @@ const actions = {
   coachnext: () => { ui.coach.intro = false; },
   go: (id) => go(id),
   goflex: (id) => go(id, true),
+  rebook: () => go(ui.missed.next.leg.id, false, ui.missed.out.credit),
+  refund: () => { G.refund(g, ui.missed.out.credit); ui.modal = G.isNight(g) && G.visitPlan(g).why ? 'night' : null; },
   visit: () => {
     ui.stamped = g.city;
     afterMove(G.visit(g), 'stamp');
@@ -925,7 +1028,7 @@ const actions = {
   unpeek: () => { ui.peek = null; ui.open = null; ui.flip = true; },
   passport: () => { ui.modal = 'passport'; },
   log: () => { ui.modal = 'log'; },
-  close: () => { ui.modal = ui.modal === 'stamp' && G.isNight(g) ? 'night' : null; },
+  close: () => { ui.modal = ['stamp', 'missed'].includes(ui.modal) && G.isNight(g) && G.visitPlan(g).why ? 'night' : null; },
   menu: () => { popup?.remove(); ui.modal = 'menu'; },
   quit: () => { g.over = 'quit'; ui.modal = 'end'; $('toasts').innerHTML = ''; },
   share: async (_, el) => {
@@ -934,7 +1037,7 @@ const actions = {
   },
 };
 
-const SELF_RENDERING = ['start', 'train', 'depart', 'go', 'goflex', 'visit', 'sleep', 'share'];
+const SELF_RENDERING = ['start', 'train', 'depart', 'go', 'goflex', 'rebook', 'visit', 'sleep', 'share'];
 
 document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]');

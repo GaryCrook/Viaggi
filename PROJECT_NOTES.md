@@ -32,11 +32,13 @@ choose under pressure.
 - **Night.** Nothing departs 22:00–06:00. At night the player is automatically booked into a hotel (room, meals, shuttle). No free bench option. Cannot afford the room = journey ends "Out of money".
 - **Berths.** An overnight ferry or sleeper train of 7h+ includes a berth: no hotel that night.
 - **Disruption.** Forecast strike on day two (8 hours only in single-country games), forecast storms, sudden airport closure with diversion (air only), traffic jams into town. Rail strikes do not stop ferries.
-- **Run for it.** A departure you are slightly too late for can be gambled on with a shown chance; a flexible ticket (+25%) refunds the fare if you miss.
+- **Run for it.** A departure you are slightly too late for can be gambled on with a shown chance. Miss it on a standard ticket and the fare is lost; you must buy again. Miss it on a flexible ticket (+25%) and you are moved to the next departure to the same place that day, paying any fare difference (nothing back if it is cheaper); you can cancel for a refund, and if there is no later departure the fare is refunded. Gary's rule, 11 October 2026.
 - **Bonus tickets.** Two secret objectives drawn at the start, keep one or both, ±75 points.
 - **Scoring.** Three stars (finish, under 80% of budget, under par time) plus points.
 - **Information.** Own board only, two look-ups of other cities per day, tomorrow's board shown read-only, and a Routes tab giving fastest / cheapest / best-value ways to each listed city.
 - **Changes from Gary's iPad testing (11 October 2026).** Tablet-landscape panel scrolls as a whole; tapping a city flips between departures to it and departures from it (repeat look-ups of the same city are free that day); stamps can be collected at any hour, and a late arrival gets the stamp before the hotel; the stamp button and passport slot pulse when a stamp is waiting; the map and clock only go dark from 22:00, matching the no-departures rule.
+- **Clarity fixes (11 October 2026).** Departures that leave before you can reach them stay on the board greyed out, labelled "TOO LATE · NEED 1H 20M", with the reason in the detail. After the last stamp a green "Hurry home" banner shows and the home pin pulses. A failed run opens a "You missed it" screen: what it cost, a reminder that you are not rebooked (standard fare lost, flexible fare refunded), and the next departures to the same place with book buttons.
+- **Out of money.** The game ends as soon as you cannot afford any departure, a waiting stamp or a hotel room (`stranded` in `game.js`), not only at bedtime. The end screen shows an animated traveller trudging home past a signpost with the distance.
 - **Passport stamps** are drawn as border stamps: Schengen rectangle with country letter in a ring of stars, native country name, date, crossing point and a plane, train or ship for how you arrived; UK, Ireland, Türkiye and Serbia have their own shapes.
 - **Travel sounds** (`src/sfx.js`): quiet synthesised jet, train or sea sound during the time-lapse; switch in the menu.
 - **Remote cities (tier 4)** have flights only to their own country's hub, so they always need a connection: Tromsø, Kiruna, Oulu, Akureyri, Innsbruck, Ponta Delgada, Ioannina. Edges of Europe (Hard) now uses three of them. Gary's example for a future USA pack: London to Savannah, Georgia.
@@ -115,8 +117,10 @@ Still open:
 
 - **USA by air, with a roads expansion** (Gary, 11 October 2026). A new region pack for flights, and a road mode (car or coach) as its surface counterpart, the way rail and sail is for Europe. Not started.
 
-## State at last save (10 October 2026)
+## State at last save (11 October 2026)
 
-Everything described here is built, played through in the preview, committed and pushed.
-The start screen opens on the splash page; the training flight was played to "Training complete".
+Everything described here is built, tried in the preview, committed and pushed.
+The public test site is https://garycrook.github.io/Viaggi/ (GitHub Pages from `main`, root); every push updates it within a minute or two.
 Nothing is half-finished.
+
+Waiting on Gary's playtesting: whether the travel sounds are right (they could not be heard during development), whether to hide too-late departures instead of greying them, whether to limit the Routes tab, and how the rail and sail journeys feel. Several are known to be too easy (Baltic Run, Biscay or Barcelona, Kreuz und Quer, Il Bel Paese).
