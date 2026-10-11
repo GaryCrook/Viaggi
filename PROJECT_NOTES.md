@@ -95,11 +95,18 @@ Limits come from `npm run solve`; difficulty is sanity-checked with `node tools/
 
 ## Open questions for Gary
 
-- Should running out of money end the game (current), or let the budget go negative and only cost the thrift star?
-- Should the Routes tab be limited (uses per day, or no exact times) to keep some fog of war?
-- Should long port connections (Holyhead, Patras, Rostock) stay as free shuttles, become paid trains, or move to nearer cities?
+Answered 11 October 2026:
+- Running out of money ends the game. Settled.
+- Subtitle stays "The Great Race" for now.
+- Routes tab: undecided. Leave as it is until he has played more.
+- Long port connections: he was not sure what was meant and wants to test rail and ferry first. Explained again; awaiting his view after testing.
+
+Still open:
 - Which country network next: Germany, France or Britain? Should Italy be opened inside international journeys the way Spain is?
-- Subtitle: keep "The Great Race" or pick something more distinctive?
+
+## Ideas for later
+
+- **USA by air, with a roads expansion** (Gary, 11 October 2026). A new region pack for flights, and a road mode (car or coach) as its surface counterpart, the way rail and sail is for Europe. Not started.
 
 ## State at last save (10 October 2026)
 
