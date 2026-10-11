@@ -41,9 +41,7 @@ export function playOrder(world, ch, order) {
     t = r.t; cost += r.cost; place = r.place; port = r.port; at = stop;
     route.push(...r.legs.map((l) => l.to));
     if (stop === ch.home) break;
-    const c = world.cities.get(stop), p = local(c.tz, t);
-    if (p.minutes >= RULES.officeClose) t = localToUtc(c.tz, p.y, p.m, p.d + 1, RULES.officeOpen);
-    else if (p.minutes < RULES.officeOpen) t = localToUtc(c.tz, p.y, p.m, p.d, RULES.officeOpen);
+    const c = world.cities.get(stop);
     t += ((place === 'airport' ? c.xfer : place === 'port' ? port.mins : 0) + RULES.dwell) * MIN;
     cost += (place === 'airport' ? c.xferCost : place === 'port' ? port.cost : 0) + Math.round(8 * c.idx);
     place = 'city'; port = null;

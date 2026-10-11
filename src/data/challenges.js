@@ -12,8 +12,8 @@ export const CHALLENGES = [
     home: 'LON', targets: ['BCN', 'ROM', 'ATH', 'VIE', 'BER', 'STO'], date: [2026, 7, 13], hours: 80, budget: 2150, parHours: 64, level: 'Medium',
   },
   {
-    id: 'edges', pack: 'air', modes: ['air'], name: 'Edges of Europe', blurb: 'The four corners of the map in midwinter. Thin timetables, long nights.',
-    home: 'LON', targets: ['REK', 'LIS', 'IST', 'HEL', 'MLA'], date: [2027, 2, 8], hours: 96, budget: 1750, parHours: 78, level: 'Hard',
+    id: 'edges', pack: 'air', modes: ['air'], name: 'Edges of Europe', blurb: 'The Arctic, the Azores and the Greek mountains. No flight from London reaches any of them: each needs a connection through its home hub.',
+    home: 'LON', targets: ['TOS', 'PDL', 'IOA'], date: [2026, 6, 8], hours: 112, budget: 2900, parHours: 94, level: 'Hard',
   },
   // Rail expansion: train-only journeys. `rail` is the timetable in play:
   // 'international' shows only cross-border trains between major cities;
@@ -79,7 +79,7 @@ import { calibrate } from '../engine/planner.js';
 
 export function dailyChallenge(world, now = new Date()) {
   const date = [now.getFullYear(), now.getMonth() + 1, now.getDate()], key = date.join('-');
-  const pool = [...world.cities.values()].filter((c) => c.id !== 'LON' && !c.railOnly)
+  const pool = [...world.cities.values()].filter((c) => c.id !== 'LON' && !c.railOnly && c.tier <= 3)
     .map((c) => [rand(`daily|${key}|${c.id}`), c.id]).sort((a, b) => a[0] - b[0]);
   const ch = {
     id: 'daily', pack: 'air', modes: ['air'], name: 'Daily Challenge', level: 'Today', key, seed: `daily-${key}`,

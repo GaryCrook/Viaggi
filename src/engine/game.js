@@ -11,7 +11,6 @@ export const RULES = {
   airFromCity: 60,       // check-in buffer on top of the transfer when coming from town
   railFromCity: 20,
   ferryCheckIn: 45,
-  officeOpen: 6 * 60, officeClose: 20 * 60,
   nightFrom: 22 * 60, nightTo: 5 * 60, wake: 6 * 60,
   lookupsPerDay: 2,
   jamChance: 0.18,
@@ -29,8 +28,8 @@ export function newGame(world, challenge, seed = String(Date.now())) {
     world, challenge, seed, start, clock: start,
     // `untimed` challenges have no deadline: the aim is simply the fastest finish.
     deadline: challenge.untimed ? Infinity : start + challenge.hours * HOUR,
-    spent: 0, city: challenge.home, place: world.modes.includes('air') ? 'airport' : 'city', collected: [], stampAt: {},
-    lookups: RULES.lookupsPerDay, path: [], log: [], nights: 0, hotels: 0, moves: 0, over: null,
+    spent: 0, city: challenge.home, place: world.modes.includes('air') ? 'airport' : 'city', collected: [], stampAt: {}, stampVia: {}, arrivedBy: null,
+    lookups: RULES.lookupsPerDay, peeked: [], path: [], log: [], nights: 0, hotels: 0, moves: 0, over: null,
     port: null, landed: [challenge.home], carriers: [], trains: 0, lowcost: false, tickets: [],
   };
   // Training is a calm first trip: no disruption and no bonus tickets.
@@ -135,6 +134,7 @@ export function book(g, row, { flex = false } = {}) {
   g.city = to;
   g.place = terminal;
   g.port = port;
+  g.arrivedBy = leg.mode;
   g.path.push({ from, to, mode: leg.mode });
   g.landed.push(to);
   if (leg.mode === 'rail') g.trains++;
@@ -154,7 +154,6 @@ export function book(g, row, { flex = false } = {}) {
 
 export function visitPlan(g) {
   const c = here(g);
-  const { minutes } = local(c.tz, g.clock);
   const fromAirport = g.place === 'airport';
   const plan = {
     mins: (fromAirport ? c.xfer : g.place === 'port' ? g.port.mins : 0) + RULES.dwell,
@@ -165,7 +164,6 @@ export function visitPlan(g) {
   plan.cost = plan.transfer + plan.fee;
   if (!stampCities(g).includes(c.id)) plan.why = 'Not on your list';
   else if (g.collected.includes(c.id)) plan.why = 'Already stamped';
-  else if (minutes < RULES.officeOpen || minutes >= RULES.officeClose) plan.why = 'Stamp office shut until 06:00';
   else if (plan.cost > remaining(g)) plan.why = 'Not enough money';
   return plan;
 }
@@ -184,6 +182,8 @@ export function visit(g) {
   g.spent += plan.cost;
   g.collected.push(c.id);
   g.stampAt[c.id] = g.clock;
+  // What the border stamp records: how you came in, and through where.
+  g.stampVia[c.id] = { mode: g.arrivedBy || 'air', place: g.arrivedBy === 'ferry' && g.port ? g.port.name : g.arrivedBy === 'air' ? c.apt : c.name };
   g.place = 'city';
   g.port = null;
   g.moves++;
@@ -212,14 +212,20 @@ export function sleep(g) {
   g.clock = nextWake(g);
   g.hotels++;
   g.lookups = RULES.lookupsPerDay;
+  g.peeked = [];
   g.nights++;
   g.moves++;
   finish(g);
 }
 
-export function usePeek(g) {
+// Looking up a city's departures costs one look-up; returning to a city already
+// looked up today is free.
+export const canPeek = (g, cityId) => g.peeked.includes(cityId) || g.lookups > 0;
+export function usePeek(g, cityId) {
+  if (g.peeked.includes(cityId)) return true;
   if (g.lookups <= 0) return false;
   g.lookups--;
+  g.peeked.push(cityId);
   return true;
 }
 

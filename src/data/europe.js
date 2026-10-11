@@ -4,7 +4,8 @@
 // the engine never hard-codes geography.
 //
 // City fields
-//   tier      1 = major hub, 2 = large city, 3 = regional
+//   tier      1 = major hub, 2 = large city, 3 = regional,
+//             4 = remote: flights only to its own country's hub, so it always needs a connection
 //   idx       cost-of-living index (1.0 = European average) – scales hotels, meals, souvenirs
 //   apt       main airport code shown on the board
 //   xfer      airport <-> city centre, minutes one way
@@ -85,6 +86,13 @@ export const CITIES = [
   c('DBV', 'Dubrovnik', 'HR', 42.56, 18.27, 'Europe/Zagreb', 3, 1.0, 'DBV', 30, 8, '🪻', 'Lavender sachet'),
   c('LJU', 'Ljubljana', 'SI', 46.22, 14.46, 'Europe/Ljubljana', 3, 0.85, 'LJU', 30, 4, '🍯', 'Honey jar'),
   c('ATH', 'Athens', 'GR', 37.94, 23.94, 'Europe/Athens', 2, 0.85, 'ATH', 40, 8, '🦉', 'Olive-wood owl'),
+  c('TOS', 'Tromsø', 'NO', 69.68, 18.92, 'Europe/Oslo', 4, 1.5, 'TOS', 15, 9, '🌌', 'Northern lights print'),
+  c('KRN', 'Kiruna', 'SE', 67.82, 20.34, 'Europe/Stockholm', 4, 1.2, 'KRN', 15, 10, '⛏️', 'Iron ore pebble'),
+  c('OUL', 'Oulu', 'FI', 64.93, 25.35, 'Europe/Helsinki', 4, 1.1, 'OUL', 25, 5, '🎸', 'Air guitar pick'),
+  c('AEY', 'Akureyri', 'IS', 65.66, -18.07, 'Atlantic/Reykjavik', 4, 1.6, 'AEY', 10, 12, '🐋', 'Whale-tail pendant'),
+  c('INN', 'Innsbruck', 'AT', 47.26, 11.34, 'Europe/Vienna', 4, 1.2, 'INN', 20, 3, '⛷️', 'Cowbell'),
+  c('PDL', 'Ponta Delgada', 'PT', 37.74, -25.70, 'Atlantic/Azores', 4, 0.9, 'PDL', 10, 7, '🍍', 'Pineapple jam'),
+  c('IOA', 'Ioannina', 'GR', 39.70, 20.82, 'Europe/Athens', 4, 0.8, 'IOA', 15, 6, '🥈', 'Silver filigree'),
   c('IST', 'Istanbul', 'TR', 41.26, 28.74, 'Europe/Istanbul', 1, 0.6, 'IST', 50, 3, '🧿', 'Evil-eye charm'),
 ];
 

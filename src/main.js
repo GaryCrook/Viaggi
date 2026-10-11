@@ -7,6 +7,7 @@ import { POSTCARDS } from './data/postcards.js';
 import { createWorld, MODES } from './engine/world.js';
 import * as G from './engine/game.js';
 import { legStatus } from './engine/events.js';
+import { sfx } from './sfx.js';
 import { routeOptions } from './engine/planner.js';
 import { arc, hash, local, fmtTime, fmtDay, fmtDur, MIN } from './engine/util.js';
 
@@ -79,19 +80,20 @@ function initMap() {
   }
 }
 
-// How dark it is at a local time: 0 by day, 1 at night, with dawn and dusk between.
+// How dark it is at a local time. It follows the rule the player cares about:
+// fully dark only while nothing departs (22:00 to 06:00), with dusk from 20:00.
 function darkness(tz, ms) {
   const m = local(tz, ms).minutes;
-  if (m < 300 || m >= 1260) return 1;
-  if (m < 420) return 1 - (m - 300) / 120;
-  if (m >= 1080) return (m - 1080) / 180;
+  if (m >= 1320 || m < 270) return 1;
+  if (m < 360) return 1 - (m - 270) / 90;
+  if (m >= 1200) return (m - 1200) / 120;
   return 0;
 }
 
 function shade(tz, ms) {
   const d = darkness(tz, ms);
   if (map.getLayer('night')) map.setPaintProperty('night', 'background-opacity', d * 0.55);
-  $('stage').classList.toggle('dark', d > 0.5);
+  $('stage').classList.toggle('dark', d > 0.6);
 }
 
 const byRail = () => !world.modes.includes('air');
@@ -150,6 +152,7 @@ function travel(from, to, row) {
     const wait = row.dep - g.clock > 20 * MIN ? 700 : 0;
     const ride = Math.min(4200, 1100 + ((row.arr - row.dep) / MIN) * 9);
     const dur = wait + ride, t0 = performance.now();
+    setTimeout(() => sfx.travel(row.leg.mode, ride), wait);
     let finished = false;
     const end = () => { if (finished) return; finished = true; m.remove(); resolve(); };
     const step = (now) => {
@@ -174,22 +177,41 @@ function travel(from, to, row) {
   });
 }
 
+// Tapping a city flips between two views: today's departures from here to
+// that city, and the departures from that city. Each further tap flips back.
 function pinClick(id) {
   if (!g || g.over || ui.busy || ui.modal) return;
-  const c = world.cities.get(id);
+  const c = world.cities.get(id), here = G.here(g);
+  popup?.remove();
+  if (id !== g.city && ui.pinned === id && ui.peek !== id && G.canPeek(g, id)) {
+    actions.peek(id);                       // second tap: departures from that city
+    render();
+    return;
+  }
+  const back = ui.peek === id;              // third tap: back to departures from here
+  ui.pinned = id;
+  ui.peek = null;
   const onList = G.stampCities(g).includes(id);
   const cost = c.idx >= 1.3 ? 'Expensive' : c.idx >= 0.9 ? 'Mid-priced' : 'Cheap';
   const status = id === g.city ? 'You are here.'
     : onList ? (g.collected.includes(id) ? 'Passport stamped.' : 'On your list: stamp needed.')
     : id === g.challenge.home ? 'Home. Finish here.' : 'Not on your list.';
-  const peek = id === g.city ? ''
-    : `<button class="btn" data-act="peek" data-id="${id}" ${g.lookups ? '' : 'disabled'}>Look up departures (${g.lookups} left today)</button>`;
-  popup?.remove();
-  popup = new maplibregl.Popup({ offset: 16, closeButton: false, maxWidth: '260px' })
+  const direct = id === g.city ? 0 : G.board(g).filter((r) => r.leg.to === id).length;
+  const board = id === g.city ? '' : direct
+    ? `<p><b>${here.name} to ${c.name}:</b> ${direct} departure${direct > 1 ? 's' : ''} today, shown on the board.</p>`
+    : `<p><b>${here.name} to ${c.name}:</b> nothing direct today. Try the Routes tab.</p>`;
+  const free = g.peeked.includes(id);
+  const tip = id === g.city ? '' : G.canPeek(g, id)
+    ? `<small class="tip">Tap ${c.name} again for departures from ${c.name}${free ? '' : ` · ${g.lookups} look-up${g.lookups > 1 ? 's' : ''} left today`}</small>`
+    : '<small class="tip">No look-ups left today</small>';
+  popup = new maplibregl.Popup({ offset: 16, closeButton: false, maxWidth: '270px' })
     .setLngLat([c.lon, c.lat])
-    .setHTML(`<h3>${c.emoji} ${c.name}</h3><p>${status}<br>${cost} city · ${byRail() ? 'station in the centre' : `${c.xfer} min from ${c.apt} to the centre`}</p>${peek}`)
+    .setHTML(`<h3>${c.emoji} ${c.name}</h3><p>${status}<br>${cost} city · ${byRail() ? 'station in the centre' : `${c.xfer} min from ${c.apt} to the centre`}</p>${board}${tip}`)
     .addTo(map);
-  if (!ui.peek && id !== g.city) { ui.open = id; ui.filter = 'all'; render(); scrollToOpen(); }
+  if (id !== g.city) { ui.open = id; ui.filter = 'all'; }
+  if (back) ui.flip = true;
+  render();
+  scrollToOpen();
 }
 
 // Bring the opened destination and its list of departures into view. The row
@@ -219,7 +241,7 @@ function setClock(tz, ms) {
   const p = local(tz, ms);
   el.querySelector('.hour').setAttribute('transform', `rotate(${(p.minutes / 2) % 360} 50 50)`);
   el.querySelector('.minute').setAttribute('transform', `rotate(${p.min * 6} 50 50)`);
-  el.classList.toggle('night', darkness(tz, ms) > 0.5);
+  el.classList.toggle('night', p.minutes >= 1320 || p.minutes < 360);
   el.querySelector('svg').setAttribute('aria-label', `${fmtTime(tz, ms)} local time`);
   el.querySelector('b').textContent = fmtTime(tz, ms);
   el.querySelector('small').textContent = p.h < 12 ? 'morning' : p.h < 18 ? 'afternoon' : p.h < 22 ? 'evening' : 'night';
@@ -227,15 +249,55 @@ function setClock(tz, ms) {
 
 // ------------------------------------------------------------------ passport
 
-const INKS = ['#b4322a', '#1f5fa8', '#1f7a5c', '#6a3d9a'];
+// Border stamps. Schengen countries use the familiar rectangle: country letter
+// in a ring of stars, how you arrived, the date and the crossing point.
+// Countries outside Schengen get their own shapes.
+const INKS = ['#1f3f8f', '#a3262a', '#1d6b4f', '#3b2a6b', '#26282c'];
+const NATIONS = {
+  GB: ['GB', 'UNITED KINGDOM'], IE: ['IRL', 'ÉIRE · IRELAND'], FR: ['F', 'FRANCE'], NL: ['NL', 'NEDERLAND'], BE: ['B', 'BELGIË · BELGIQUE'],
+  LU: ['L', 'LËTZEBUERG'], DE: ['D', 'DEUTSCHLAND'], CH: ['CH', 'SCHWEIZ · SUISSE'], AT: ['A', 'ÖSTERREICH'], ES: ['E', 'ESPAÑA'],
+  PT: ['P', 'PORTUGAL'], IT: ['I', 'ITALIA'], MT: ['M', 'MALTA'], DK: ['DK', 'DANMARK'], SE: ['S', 'SVERIGE'], NO: ['N', 'NORGE'],
+  FI: ['FIN', 'SUOMI'], IS: ['IS', 'ÍSLAND'], EE: ['EST', 'EESTI'], LV: ['LV', 'LATVIJA'], LT: ['LT', 'LIETUVA'], PL: ['PL', 'POLSKA'],
+  CZ: ['CZ', 'ČESKO'], HU: ['H', 'MAGYARORSZÁG'], RO: ['RO', 'ROMÂNIA'], BG: ['BG', 'БЪЛГАРИЯ'], RS: ['SRB', 'СРБИЈА'], HR: ['HR', 'HRVATSKA'],
+  SI: ['SLO', 'SLOVENIJA'], GR: ['GR', 'ΕΛΛΑΣ'], TR: ['TR', 'TÜRKİYE'],
+};
+const OUTSIDE_SCHENGEN = { GB: 'oval', IE: 'double', TR: 'round', RS: 'hex' };
+const ICONS = {
+  air: 'M8 0l2 6 6 3v2l-6-1-1 3 2 1.5V16l-3-1-3 1v-1.5L7 13l-1-3-6 1V9l6-3z',
+  rail: 'M3 1h10a2 2 0 012 2v8a2 2 0 01-2 2H3a2 2 0 01-2-2V3a2 2 0 012-2zm1 2v4h8V3zm0 6.5v1.5h2V9.5zm6 0v1.5h2V9.5zM4 14l-2 2h2l1-2zm8 0l2 2h-2l-1-2z',
+  ferry: 'M7 0h2v3h3v4l3 1-2 5H3L1 8l3-1V3h3zm-1 5v2h4V5zM0 15h16v1H0z',
+};
 
 function stampHTML(id, big = false) {
   const c = world.cities.get(id), t = g.stampAt[id];
-  if (!t) return `<div class="ink blank ${big ? 'big' : ''}"><i>${c.emoji}</i><small>${c.name}</small></div>`;
-  const p = local(c.tz, t), h = hash(`ink|${id}`);
-  const date = `${String(p.d).padStart(2, '0')}·${String(p.m).padStart(2, '0')}·${p.y}`;
-  return `<div class="ink ${big ? 'big' : ''}" style="--ink:${INKS[h % 4]};--r:${(h % 25) - 12}deg">
-    <small>${c.name}</small><i>${c.emoji}</i><small>${date} · ${c.country}</small></div>`;
+  if (!t) return `<div class="stp blank ${big ? 'big' : ''}"><i>${c.emoji}</i><small>${c.name}</small></div>`;
+  const p = local(c.tz, t), h = hash(`ink|${c.country}`), [letter, nation] = NATIONS[c.country] || [c.country, c.name];
+  const via = g.stampVia[id] || { mode: 'air', place: c.apt };
+  const date = `${String(p.d).padStart(2, '0')}.${String(p.m).padStart(2, '0')}.${String(p.y).slice(2)}`;
+  const shape = OUTSIDE_SCHENGEN[c.country] || 'rect';
+  const frame = {
+    rect: '<rect x="3" y="3" width="114" height="78" rx="4"/>',
+    double: '<rect x="3" y="3" width="114" height="78" rx="2"/><rect x="7" y="7" width="106" height="70" rx="1" stroke-width="1"/>',
+    oval: '<ellipse cx="60" cy="42" rx="57" ry="39"/><ellipse cx="60" cy="42" rx="52" ry="34" stroke-width="1"/>',
+    round: '<circle cx="60" cy="42" r="39"/><circle cx="60" cy="42" r="34" stroke-width="1"/>',
+    hex: '<path d="M22 3h76l19 39-19 39H22L3 42z"/>',
+  }[shape];
+  const place = (via.place === c.name ? c.name : `${via.place} · ${c.name}`).toUpperCase();
+  const body = shape === 'rect' || shape === 'double'
+    ? `<circle cx="21" cy="22" r="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="1.4 4.88"/>
+       <text x="21" y="${letter.length > 2 ? 24.5 : 26}" text-anchor="middle" font-size="${letter.length > 2 ? 7.5 : 11}" font-weight="700">${letter}</text>
+       <text x="66" y="19" text-anchor="middle" font-size="${nation.length > 13 ? 6.2 : 8}" letter-spacing=".8">${nation}</text>
+       <path d="${ICONS[via.mode]}" transform="translate(97 24)"/>
+       <path d="M78 57h13m-4-4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="2"/><rect x="96" y="50" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"/>
+       <text x="44" y="53" text-anchor="middle" font-size="17" font-weight="700" class="mono">${date}</text>
+       <text x="60" y="73" text-anchor="middle" font-size="${place.length > 20 ? 6 : 7.5}" letter-spacing=".5">${place}</text>`
+    : `<text x="60" y="${shape === 'round' ? 24 : 22}" text-anchor="middle" font-size="${nation.length > 13 ? 6.5 : 8}" letter-spacing=".8">${nation}</text>
+       <path d="${ICONS[via.mode]}" transform="translate(52 ${shape === 'round' ? 27 : 25}) scale(.9)"/>
+       <text x="60" y="56" text-anchor="middle" font-size="15" font-weight="700" class="mono">${date}</text>
+       <text x="60" y="67" text-anchor="middle" font-size="${place.length > 16 ? 5.5 : 7}" letter-spacing=".5">${place}</text>`;
+  return `<svg class="stp ${big ? 'big' : ''}" viewBox="0 0 120 84" role="img" aria-label="${c.name} entry stamp, ${date}"
+      style="--ink:${INKS[h % INKS.length]};--r:${(hash(`tilt|${id}`) % 17) - 8}deg">
+    <g filter="url(#rough)"><g fill="none" stroke="currentColor" stroke-width="2.4">${frame}</g><g fill="currentColor">${body}</g></g></svg>`;
 }
 
 // ------------------------------------------------------------------ training coach
@@ -261,16 +323,20 @@ function coachStep() {
   }
   if (g.city === T && want.includes(T)) {
     const plan = G.visitPlan(g);
-    if (plan.why) return { text: `The stamp office in ${here.name} is shut for the night. Stay over and get the stamp in the morning.`, target: '.act[data-act=night]' };
     return { target: '.act[data-act=visit]',
       text: `You are in ${here.name}, but the stamp office is in town. Going there takes time${plan.transfer ? ` and a ${money(plan.transfer)} airport transfer` : ''}. Tap “Get passport stamped”.` };
   }
   const home = want.length ? '' : `Full passport! Now get home to ${there.name} before the time runs out. `;
-  const direct = G.board(g).some((r) => r.leg.to === T && (r.bookable || r.tight));
+  const toT = G.board(g).filter((r) => r.leg.to === T);
+  const direct = toT.some((r) => r.bookable || r.tight), onlyRisky = direct && !toT.some((r) => r.bookable);
   if (ui.filter === 'routes') {
     const today = G.board(g);
     const ready = (routeOptions(g, (leg) => legStatus(g.events, leg, world, g.seed, g.clock)).get(T) || [])
       .some((r) => today.some((x) => x.leg.id === r.legs[0].leg.id && (x.bookable || x.tight)));
+    if (!ready && onlyRisky) {
+      return { target: '[data-act=filter][data-id=all]',
+        text: `${home}It is getting late. One departure to ${there.name} is still on the board, but you would have to run for it. Tap “All” to look, or stay the night.` };
+    }
     if (!ready) {
       return { target: '.act[data-act=night]',
         text: `${home}Every way to ${there.name} now leaves tomorrow. Tap “Stay the night”: you are booked into a hotel and wake at 06:00.` };
@@ -285,6 +351,10 @@ function coachStep() {
   if (!direct) {
     return { target: '[data-act=filter][data-id=routes]',
       text: `${home}Nothing more goes straight to ${there.name} today. Tap “Routes” to look for a connection, or stay the night.` };
+  }
+  if (ui.open === T && onlyRisky) {
+    return { target: '.opts .go.run, .act[data-act=night]',
+      text: `You are too late to stroll to this one. “Run” gambles the fare on the chance shown; “Flex” costs more but refunds you if you miss it. Or play safe and stay the night: nothing leaves after 22:00.` };
   }
   if (ui.open === T) {
     return { target: '.opts .go:not([disabled])',
@@ -340,7 +410,7 @@ function renderPanel() {
   const plan = G.visitPlan(g);
   const slots = G.stampCities(g).map((id) => {
     const t = world.cities.get(id);
-    return `<div class="slot ${g.collected.includes(id) ? 'done' : ''}"><i>${t.emoji}</i>${t.name}</div>`;
+    return `<div class="slot ${g.collected.includes(id) ? 'done' : id === g.city ? 'due' : ''}"><i>${t.emoji}</i>${t.name}</div>`;
   }).join('');
   const tickets = G.tickets(g).map((t) =>
     `<span class="tkt ${t.status}" title="${t.text}">${t.status === 'done' ? '✓' : t.status === 'failed' ? '✗' : '🎫'} ${t.name}</span>`).join('');
@@ -363,7 +433,7 @@ function renderPanel() {
     </button>
     ${tickets ? `<div class="tkts">${tickets}</div>` : ''}
     <div class="actions">
-      <button class="act primary" data-act="visit" ${plan.why ? 'disabled' : ''}>
+      <button class="act primary ${plan.why ? '' : 'ready'}" data-act="visit" ${plan.why ? 'disabled' : ''}>
         <b>${c.emoji} Get passport stamped</b>
         <small>${plan.why || `${fmtDur(plan.mins)} · ${money(plan.cost)}${plan.transfer ? ' incl. transfer' : ''}`}</small>
       </button>
@@ -375,6 +445,7 @@ function renderPanel() {
     ${renderBoard()}
     <div class="foot"><button data-act="log">Journey log</button><button data-act="menu">End journey</button></div>`;
   setClock(tz, g.clock);
+  if (!keep) $('panel').scrollTop = 0;
   if (keep) {
     $('panel').scrollTop = keep.panel;
     if (keep.rows) document.querySelector('.rows').scrollTop = keep.rows;
@@ -421,7 +492,8 @@ function renderBoard() {
     ? `<div class="sep"><b>Tomorrow</b><span>Stay the night to book</span></div>${next.map((x) => rowHTML(x, true)).join('')}` : '';
 
   const title = ui.peek
-    ? `<button class="back" data-act="unpeek">← Back to ${G.here(g).name}</button><h2>${c.name}</h2>`
+    ? `<button class="back" data-act="unpeek">← Back to ${G.here(g).name}</button><h2>From ${c.name}</h2>`
+      + `<span class="peeknote">Tap ${c.name} on the map to flip back</span>`
     : `<h2>Departures</h2><div class="seg">
         <button class="${ui.filter === 'all' ? 'on' : ''}" data-act="filter" data-id="all">All</button>
         <button class="${ui.filter === 'mine' ? 'on' : ''}" data-act="filter" data-id="mine">★ My list</button>
@@ -544,7 +616,7 @@ function splashSheet() {
     <p class="pitch">A race against the clock and your wallet. You are handed a list of cities, a deadline and a budget. Get your passport stamped in every city and make it home in time.</p>
     <h3 class="how">How to play</h3>
     <ol class="steps">${steps}</ol>
-    <p class="modes"><b>✈ By air</b> covers 45 cities by plane. <b>🚆 Rail and sail</b> is trains, sleepers and ferries only, across borders or within one country.</p>
+    <p class="modes"><b>✈ By air</b> covers more than 50 cities by plane. <b>🚆 Rail and sail</b> is trains, sleepers and ferries only, across borders or within one country.</p>
     <div class="startbar">${buttons}</div>`;
 }
 
@@ -572,6 +644,7 @@ function menuSheet() {
       <button class="btn ghost" data-act="passport">Passport</button>
       <button class="btn ghost" data-act="log">Journey log</button>
       <button class="btn ghost" data-act="help">How to play</button>
+      <button class="btn ghost" data-act="sound">Travel sounds: ${sfx.on ? 'on' : 'off'}</button>
       <button class="btn ghost" data-act="quit">End this journey and see my score</button>
       <button class="btn ghost" data-act="again">Abandon and return to the start screen</button>
     </div>`;
@@ -604,7 +677,7 @@ function startSheet() {
     <p class="modehint">${ui.mode === 'free'
       ? 'No deadline. Collect every stamp and get home as fast as you can; your time goes on the leaderboard. The budget still applies.'
       : 'Beat the deadline and the budget. Stars for finishing, thrift and speed, plus bonus tickets.'}</p>
-    <div class="packhead first"><b>✈ By air</b><span>Fly between 45 cities. Airports are out of town, so allow for transfers.</span></div>
+    <div class="packhead first"><b>✈ By air</b><span>Fly between more than 50 cities. Airports are out of town, so allow for transfers. Hard journeys include places with no direct flight.</span></div>
     <div class="cards">${pack('air')}</div>
     <div class="packhead"><b>🚆 Rail and sail</b><span>No flying. International journeys show cross-border trains between major cities; single-country journeys show that country’s network. Ferries offer a slower, cheaper way round from ports a short taxi ride or an easy train from the station, and an overnight sailing or a sleeper train is your bed for the night.</span></div>
     <div class="cards">${pack('rail')}</div>
@@ -662,7 +735,7 @@ function stampSheet() {
 function passportSheet() {
   return `
     <div class="booklet"><b>PASSPORT</b><span>Viaggi · ${g.challenge.name}</span></div>
-    <div class="page grid">${G.stampCities(g).map((id) => stampHTML(id)).join('')}</div>
+    <div class="page grid" data-no="${12 + (hash(g.seed) % 20)}">${G.stampCities(g).map((id) => stampHTML(id)).join('')}</div>
     <div class="row-btns"><button class="btn" data-act="close">Close</button></div>`;
 }
 
@@ -759,9 +832,11 @@ function afterMove(notes = [], modal = null) {
   const all = G.news(g);
   if (!g.over) all.slice(ui.seenNews).forEach((e) => toast(e.text, 'news'));
   ui.seenNews = all.length;
-  ui.open = null; ui.peek = null; ui.busy = false; ui.flip = true;
+  ui.open = null; ui.peek = null; ui.pinned = null; ui.busy = false; ui.flip = true;
   popup?.remove();
-  ui.modal = g.over ? 'end' : modal || (G.isNight(g) ? 'night' : null);
+  // Arriving late with a stamp to collect: let the player get it before the hotel takes over.
+  const stampFirst = !G.visitPlan(g).why;
+  ui.modal = g.over ? 'end' : modal || (G.isNight(g) && !stampFirst ? 'night' : null);
   if (g.over && g.challenge.key && !g.challenge.untimed) {
     const s = G.score(g), k = `tg-daily-${g.challenge.key}`, old = store.get(k);
     if (!old || s.points > old.points) store.set(k, { points: s.points, stars: s.stars });
@@ -806,6 +881,7 @@ async function go(legId, flex = false) {
   const row = G.board(g).find((r) => r.leg.id === legId);
   if (!row || !(row.bookable || row.tight) || ui.busy) return;
   popup?.remove();
+  sfx.unlock();
   if (!G.runSucceeds(g, row)) { afterMove(G.book(g, row, { flex }).notes); return; }
   const from = G.here(g), to = world.cities.get(row.divertTo ?? row.leg.to);
   ui.busy = true; ui.open = row.leg.to;
@@ -825,6 +901,7 @@ const actions = {
   open: (id) => { ui.open = ui.open === id ? null : id; },
   filter: (id) => { ui.filter = id; ui.open = null; ui.flip = true; if (id === 'routes' && ui.coach) ui.coach.routes = true; },
   train: startTraining,
+  sound: () => sfx.toggle(),
   mode: (id) => { ui.mode = id; },
   times: () => { ui.modal = 'times'; },
   savetime: () => {
@@ -844,7 +921,7 @@ const actions = {
   },
   night: () => { ui.modal = 'night'; },
   sleep: () => { const c = G.here(g); G.sleep(g); afterMove([`Good morning from ${c.name}. It is 06:00.`]); },
-  peek: (id) => { if (G.usePeek(g)) { ui.peek = id; ui.open = null; ui.flip = true; popup?.remove(); } },
+  peek: (id) => { if (G.usePeek(g, id)) { ui.peek = id; ui.pinned = id; ui.open = null; ui.flip = true; popup?.remove(); } },
   unpeek: () => { ui.peek = null; ui.open = null; ui.flip = true; },
   passport: () => { ui.modal = 'passport'; },
   log: () => { ui.modal = 'log'; },
@@ -870,4 +947,4 @@ document.addEventListener('click', async (e) => {
 
 initMap();
 render();
-if (params.has('debug')) window.tg = { get g() { return g; }, get map() { return map; }, G, ui, render };
+if (params.has('debug')) window.tg = { get g() { return g; }, get map() { return map; }, G, ui, render, sfx };

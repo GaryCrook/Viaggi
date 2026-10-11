@@ -20,6 +20,8 @@
     <aside id="panel"></aside>
   </div>
   <div id="modal"></div>
+  <!-- Roughens stamp outlines so the ink looks pressed, not printed -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="rough"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="1.7"/></filter></svg>
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script type="module" src="src/main.js"></script>
 </body>

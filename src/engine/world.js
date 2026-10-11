@@ -30,17 +30,20 @@ const PROVIDERS = {
       for (const [hubId, reach] of Object.entries(carrier.hubs)) {
         const hub = cities.get(hubId);
         for (const c of region.cities) {
-          if (c.id === hubId || c.railOnly) continue;
+          if (c.id === hubId || c.railOnly || hub.tier === 4) continue;
+          // A remote city is flown only by its own country's network carrier, from the home hub.
+          const remote = c.tier === 4;
+          if (remote && (carrier.type !== 'network' || hub.country !== c.country)) continue;
           const pair = `${carrier.code}-${[hubId, c.id].sort().join('-')}`;
           if (seen.has(pair)) continue;
           const km = distKm(hub, c);
           if (km < 220) continue;                       // too short to fly
           const network = carrier.type === 'network';
-          const p = network ? (c.tier === 1 ? Math.min(1, reach * 2) : c.tier === 2 ? reach : reach * 0.8)
+          const p = remote ? 1 : network ? (c.tier === 1 ? Math.min(1, reach * 2) : c.tier === 2 ? reach : reach * 0.8)
                             : reach * (c.tier === 1 ? 1.3 : 1);
           if (rand(`route|${carrier.code}|${hubId}|${c.id}`) >= p) continue;
           seen.add(pair);
-          const freq = network
+          const freq = remote ? 2 : network
             ? Math.max(1, 5 - c.tier - hub.tier - (reach < 0.5 ? 1 : 0))
             : (hub.tier === 1 && c.tier === 1 ? 2 : 1);
           const base = {
