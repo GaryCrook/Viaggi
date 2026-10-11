@@ -20,7 +20,7 @@ export function earliest(world, from, place, t0, to, port = null) {
       const l = lead(city, cur.place, leg, cur.port);
       if (leg.dep < cur.t + l.min * MIN) continue;
       const p = { air: 'airport', rail: 'city', ferry: 'port' }[leg.mode];
-      const at = leg.mode === 'ferry' ? { name: leg.portTo, mins: leg.shuttleTo } : null;
+      const at = leg.mode === 'ferry' ? leg.portTo : null;
       const k = `${leg.to}|${p}|${at?.name || ''}`, old = best.get(k);
       if (!old || leg.arr < old.t) {
         best.set(k, { t: leg.arr, cost: cur.cost + leg.fare + l.cost, legs: [...cur.legs, leg], city: leg.to, place: p, port: at });
@@ -45,7 +45,7 @@ export function playOrder(world, ch, order) {
     if (p.minutes >= RULES.officeClose) t = localToUtc(c.tz, p.y, p.m, p.d + 1, RULES.officeOpen);
     else if (p.minutes < RULES.officeOpen) t = localToUtc(c.tz, p.y, p.m, p.d, RULES.officeOpen);
     t += ((place === 'airport' ? c.xfer : place === 'port' ? port.mins : 0) + RULES.dwell) * MIN;
-    cost += (place === 'airport' ? c.xferCost : 0) + Math.round(8 * c.idx);
+    cost += (place === 'airport' ? c.xferCost : place === 'port' ? port.cost : 0) + Math.round(8 * c.idx);
     place = 'city'; port = null;
   }
   const hours = (t - start) / HOUR, nights = Math.floor((hours + 8) / 24);
@@ -92,7 +92,7 @@ function search(g, perHour, statusOf) {
         const money = cur.money + leg.fare + l.cost + nights * hotelRate(city, cur.place);
         const score = money + perHour * ((st.arr - g.clock) / HOUR);
         const place = { air: 'airport', rail: 'city', ferry: 'port' }[leg.mode];
-        const port = leg.mode === 'ferry' ? { name: leg.portTo, mins: leg.shuttleTo } : null;
+        const port = leg.mode === 'ferry' ? leg.portTo : null;
         const k = `${leg.to}|${place}|${port?.name || ''}`, old = best.get(k);
         if (!old || score < old.key) {
           best.set(k, { t: st.arr, money, nights: cur.nights + nights, key: score, city: leg.to, place, port,

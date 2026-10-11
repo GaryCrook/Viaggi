@@ -46,8 +46,9 @@ is in play (`rail`):
   one country's full home network is also open, for example London into Spain.
 
 Ferries (`FERRIES` in the region pack) sail by season: short crossings many times a day, long
-ones in the evening a few times a week. They sail port to port, and a free shuttle (minutes per
-port in the data) links each port with that city's station. An overnight sailing of seven hours
+ones in the evening a few times a week. They sail port to port. A ferry is only included if both ports are
+easy to reach from the station: a taxi (within about 10 miles, nominal fee) or a direct train
+of under two hours (normal fare). An overnight sailing of seven hours
 or more includes a berth, so it replaces that night's hotel.
 
 Only the part of the rail map connected to the challenge's home city is used.

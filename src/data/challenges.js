@@ -21,37 +21,47 @@ export const CHALLENGES = [
   {
     id: 'triangle', pack: 'rail', modes: ['rail', 'ferry'], rail: 'international', name: 'The Channel Triangle',
     blurb: 'Under the sea and round the Low Countries.',
-    home: 'LON', targets: ['PAR', 'BRU', 'AMS'], date: [2026, 5, 9], hours: 40, budget: 760, parHours: 31, level: 'Easy',
+    home: 'LON', targets: ['PAR', 'BRU', 'AMS'], date: [2026, 5, 9], hours: 40, budget: 500, parHours: 31, level: 'Easy',
   },
   {
     id: 'alpine', pack: 'rail', modes: ['rail', 'ferry'], rail: 'international', name: 'The Alpine Loop',
     blurb: 'Out of Paris, across Switzerland to Milan, then Munich and Vienna.',
-    home: 'PAR', targets: ['GVA', 'MIL', 'ZRH', 'MUC', 'VIE'], date: [2026, 9, 7], hours: 80, budget: 1350, parHours: 68, level: 'Medium',
+    home: 'PAR', targets: ['GVA', 'MIL', 'ZRH', 'MUC', 'VIE'], date: [2026, 9, 7], hours: 80, budget: 950, parHours: 68, level: 'Medium',
   },
   {
     id: 'iron', pack: 'rail', modes: ['rail', 'ferry'], rail: 'international', name: 'The Iron Road',
     blurb: 'Barcelona to Warsaw by way of Berlin and Budapest. The long way round the continent.',
-    home: 'LON', targets: ['BCN', 'BER', 'WAW', 'BUD'], date: [2026, 6, 15], hours: 144, budget: 2600, parHours: 124, level: 'Hard',
+    home: 'LON', targets: ['BCN', 'BER', 'WAW', 'BUD'], date: [2026, 6, 15], hours: 144, budget: 1700, parHours: 124, level: 'Hard',
   },
   {
     id: 'italia', pack: 'rail', modes: ['rail', 'ferry'], rail: 'IT', name: 'Il Bel Paese',
     blurb: 'One country, one network: Italy from Turin to Palermo, by high-speed train or the overnight boat.',
-    home: 'MIL', targets: ['TRN', 'VCE', 'FLR', 'ROM', 'NAP', 'PMO'], date: [2026, 4, 20], hours: 112, budget: 1300, parHours: 80, level: 'Medium',
+    home: 'MIL', targets: ['TRN', 'VCE', 'FLR', 'ROM', 'NAP', 'PMO'], date: [2026, 4, 20], hours: 100, budget: 950, parHours: 76, level: 'Medium',
   },
   {
     id: 'biscay', pack: 'rail', modes: ['rail', 'ferry'], rail: 'international', domestic: ['ES'], name: 'Biscay or Barcelona',
     blurb: 'Sail from Portsmouth to the north coast or take the fast train through Paris. Then Spain is yours to cross.',
-    home: 'LON', targets: ['SDR', 'MAD', 'SVQ', 'VLC', 'BCN'], date: [2026, 6, 22], hours: 108, budget: 1250, parHours: 90, level: 'Hard',
+    home: 'LON', targets: ['SDR', 'MAD', 'SVQ', 'VLC', 'BCN'], date: [2026, 6, 22], hours: 108, budget: 1000, parHours: 90, level: 'Hard',
   },
   {
     id: 'espana', pack: 'rail', modes: ['rail', 'ferry'], rail: 'ES', name: 'Sol y Sombra',
     blurb: 'Spain by high-speed train from Madrid, with a night boat to Mallorca.',
-    home: 'MAD', targets: ['BCN', 'VLC', 'SVQ', 'AGP', 'BIO', 'PMI'], date: [2026, 5, 18], hours: 88, budget: 950, parHours: 72, level: 'Medium',
+    home: 'MAD', targets: ['BCN', 'VLC', 'SVQ', 'AGP', 'BIO', 'PMI'], date: [2026, 5, 18], hours: 88, budget: 900, parHours: 72, level: 'Medium',
   },
   {
-    id: 'baltic', pack: 'rail', modes: ['rail', 'ferry'], rail: 'international', name: 'The Baltic Run',
-    blurb: 'North by train, then island-hopping by ship: Copenhagen, Stockholm, Helsinki and Tallinn.',
-    home: 'BER', targets: ['CPH', 'STO', 'HEL', 'TLL'], date: [2026, 7, 6], hours: 132, budget: 1150, parHours: 110, level: 'Medium',
+    id: 'hexagone', pack: 'rail', modes: ['rail', 'ferry'], rail: 'FR', name: 'L’Hexagone',
+    blurb: 'France by TGV: out from Paris to every corner, with a night train to the Riviera if you want it.',
+    home: 'PAR', targets: ['LIL', 'SXB', 'LYS', 'MRS', 'NCE', 'BOD'], date: [2026, 9, 14], hours: 84, budget: 950, parHours: 60, level: 'Medium',
+  },
+  {
+    id: 'kreuz', pack: 'rail', modes: ['rail', 'ferry'], rail: 'DE', name: 'Kreuz und Quer',
+    blurb: 'Criss-cross Germany by ICE, from the Baltic ports to the Alps.',
+    home: 'BER', targets: ['HAM', 'CGN', 'FRA', 'STR', 'MUC', 'DRS'], date: [2026, 5, 4], hours: 62, budget: 820, parHours: 48, level: 'Medium',
+  },
+  {
+    id: 'baltic', pack: 'rail', modes: ['rail', 'ferry'], rail: 'international', domestic: ['DE'], name: 'The Baltic Run',
+    blurb: 'London to the Baltic without leaving the ground: through Cologne and Hamburg to Copenhagen and Stockholm, then by ship to Helsinki and Tallinn.',
+    home: 'LON', targets: ['CPH', 'STO', 'HEL', 'TLL'], date: [2026, 7, 6], hours: 160, budget: 1500, parHours: 128, level: 'Hard',
   },
 ];
 

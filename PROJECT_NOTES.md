@@ -37,6 +37,7 @@ choose under pressure.
 - **Scoring.** Three stars (finish, under 80% of budget, under par time) plus points.
 - **Information.** Own board only, two look-ups of other cities per day, tomorrow's board shown read-only, and a Routes tab giving fastest / cheapest / best-value ways to each listed city.
 - **Splash and training.** The game opens on a splash page (purpose, how to play). "Training Flight" is a guided London–Paris–Amsterdam trip with no disruption or tickets; a coach box and a pulsing highlight show the next step, worked out from the game state (`coachStep` in `src/main.js`).
+- **No time limit mode.** Chosen on the journey list. No deadline, no bonus tickets, fixed disruption per journey so times compare; the budget still applies. The finish time goes on a top-ten board per journey, stored on the device only (`tg-times-*` in localStorage). A shared online leaderboard needs a server and is not built.
 - **Daily challenge.** Four cities from the date, same timetable and disruption for everyone, limits calibrated automatically, best score stored locally, copyable result.
 
 ## Air and surface are separate games
@@ -48,14 +49,15 @@ Decided by Gary: no mixing flights with trains.
   - `rail: 'international'` – only cross-border trains between major cities (tier 1–2), plus cross-border ferries.
   - `rail: 'IT'` / `'ES'` – one country's domestic network only.
   - `domestic: ['ES']` with `rail: 'international'` – international journey with one country's home network open (used for London into Spain).
-  - Ferries sail port to port; a free shuttle (time only) links each port to the station.
+  - Ferries sail port to port. A ferry is only included if both ports are easy to reach from the station: a taxi (within about 10 miles, nominal fee) or a direct train under two hours (normal fare). Decided by Gary on 11 October 2026; this removed London–Dublin, Dublin–Paris, Amsterdam–Edinburgh, Berlin–Copenhagen and Venice–Athens.
   - Only the part of the network reachable from the journey's home city is shown.
-- Rail-only cities (`railOnly: true`): Turin, Bologna, Florence, Genoa, Palermo, Gdańsk, Seville, Valencia, Zaragoza, Bilbao, Santander.
+- Rail and ferry fares were cut on 11 October 2026 after Gary found the Baltic Run dearer than real life: rail fares now grow with journey time to the power 0.75 and only partly with local prices; ferries are about a quarter cheaper. Budgets for all rail journeys were reset to match.
+- Rail-only cities (`railOnly: true`): Lille, Strasbourg, Lyon, Marseille, Bordeaux, Toulouse, Nantes, Stuttgart, Nuremberg, Leipzig, Dresden, Hanover, Cologne, Hamburg, Turin, Bologna, Florence, Genoa, Palermo, Gdańsk, Seville, Valencia, Zaragoza, Bilbao, Santander.
 
 ## Journeys
 
 Air: Daily Challenge, Weekend Dash, The Grand Tour, Edges of Europe.
-Rail and sail: The Channel Triangle, The Alpine Loop, The Iron Road, Biscay or Barcelona (international + Spain), Sol y Sombra (Spain), Il Bel Paese (Italy), The Baltic Run.
+Rail and sail: The Channel Triangle, The Alpine Loop, The Iron Road, Biscay or Barcelona (international + Spain), Sol y Sombra (Spain), Il Bel Paese (Italy), L’Hexagone (France), Kreuz und Quer (Germany), The Baltic Run (from London, no flights, international + Germany: Copenhagen, Stockholm, Helsinki, Tallinn, via Cologne and Hamburg as Gary described).
 
 Limits come from `npm run solve`; difficulty is sanity-checked with `node tools/bot.mjs` (30 seeds each).
 
@@ -63,7 +65,7 @@ Limits come from `npm run solve`; difficulty is sanity-checked with `node tools/
 
 - **All timetable data is modelled or estimated**, not taken from operators. Rail and ferry durations and frequencies need checking against published timetables. Airline names are real but flights are invented: use licensed data or fictional carriers before release.
 - **Difficulty is rough.** Biscay or Barcelona, Il Bel Paese and the Baltic Run are too easy (bot wins 27–30 of 30). Edges of Europe is very hard (5 of 30). The Iron Road is long (about five game days).
-- **Some "free shuttles" are really long connections** (Holyhead 3h40 from London, Patras 3h from Athens, Rostock 2h30 from Berlin).
+- **Helsinki to Gdańsk is a borderline ferry**: the train to Hanko is 1h45, just inside the two-hour rule. Gary said on 11 October 2026 to leave it in for now.
 - **The Routes tab weakens the fog of war** and makes look-ups less useful. Could be limited to a few uses a day.
 - **Map uses MapLibre with free OpenFreeMap tiles**, not Mapbox (no token). One-line swap in `src/main.js`.
 - **The map does not draw while the preview pane is hidden**, which makes screenshots look blank; it is not a bug in the game.
@@ -99,10 +101,11 @@ Answered 11 October 2026:
 - Running out of money ends the game. Settled.
 - Subtitle stays "The Great Race" for now.
 - Routes tab: undecided. Leave as it is until he has played more.
-- Long port connections: he was not sure what was meant and wants to test rail and ferry first. Explained again; awaiting his view after testing.
+- Long port connections: settled by the taxi-or-easy-train rule above.
 
 Still open:
-- Which country network next: Germany, France or Britain? Should Italy be opened inside international journeys the way Spain is?
+- France and Germany networks added 11 October 2026 at Gary's request. Britain is the obvious next one. Should Italy be opened inside international journeys the way Spain is?
+- No UK to Scandinavia passenger ferry exists (checked 11 October 2026: Harwich–Esbjerg closed 2014, Newcastle–Bergen 2008, Newcastle–Gothenburg 2006; a Newcastle–Bergen revival is discussed but unconfirmed). Not in the game.
 
 ## Ideas for later
 

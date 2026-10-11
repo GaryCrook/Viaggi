@@ -26,14 +26,16 @@ export function newGame(world, challenge, seed = String(Date.now())) {
   const [y, m, d] = challenge.date;
   const start = localToUtc(home.tz, y, m, d, challenge.startMinutes ?? 8 * 60);
   const g = {
-    world, challenge, seed, start, deadline: start + challenge.hours * HOUR, clock: start,
+    world, challenge, seed, start, clock: start,
+    // `untimed` challenges have no deadline: the aim is simply the fastest finish.
+    deadline: challenge.untimed ? Infinity : start + challenge.hours * HOUR,
     spent: 0, city: challenge.home, place: world.modes.includes('air') ? 'airport' : 'city', collected: [], stampAt: {},
     lookups: RULES.lookupsPerDay, path: [], log: [], nights: 0, hotels: 0, moves: 0, over: null,
     port: null, landed: [challenge.home], carriers: [], trains: 0, lowcost: false, tickets: [],
   };
   // Training is a calm first trip: no disruption and no bonus tickets.
   g.events = challenge.training ? [] : generateEvents(world, challenge, start, seed);
-  g.offer = challenge.training ? [] : drawTickets(world, challenge, seed);
+  g.offer = challenge.training || challenge.untimed ? [] : drawTickets(world, challenge, seed);
   return g;
 }
 
@@ -48,25 +50,26 @@ export const isNight = (g) => {
 export const stampCities = (g) => [...g.challenge.targets, ...g.tickets.filter((t) => t.city).map((t) => t.city)];
 
 // Time and money needed to get from where you are to the right terminal.
-// Airports cost a paid transfer. Ferry ports are linked to the station by a
-// free shuttle: `port` is the port you are standing in, if any.
+// Airports cost a transfer. A ferry port is linked to the station by a short
+// taxi or a train, which also costs time and money. `port` is the port you are
+// standing in, if any. `links` lists the port connections used, for display.
 export function lead(city, place, leg, port) {
   if (leg.mode === 'air') {
-    return place === 'airport' ? { min: RULES.airConnect, cost: 0, shuttle: 0 }
-      : { min: city.xfer + RULES.airFromCity, cost: city.xferCost, shuttle: 0 };
+    return place === 'airport' ? { min: RULES.airConnect, cost: 0, links: [] }
+      : { min: city.xfer + RULES.airFromCity, cost: city.xferCost, links: [] };
   }
-  const cost = place === 'airport' ? city.xferCost : 0;
-  const toStation = place === 'airport' ? city.xfer : place === 'port' ? port.mins : 0;
-  if (leg.mode === 'rail') return { min: toStation + RULES.railFromCity, cost, shuttle: place === 'port' ? port.mins : 0 };
-  const samePort = place === 'port' && port.name === leg.port;
-  const shuttle = samePort ? 0 : (place === 'port' ? port.mins : 0) + leg.shuttle;
-  return { min: (samePort ? 0 : toStation + leg.shuttle) + RULES.ferryCheckIn, cost, shuttle };
+  const links = place === 'port' ? [port] : [];
+  let min = place === 'airport' ? city.xfer : place === 'port' ? port.mins : 0;
+  let cost = place === 'airport' ? city.xferCost : place === 'port' ? port.cost : 0;
+  if (leg.mode === 'rail') return { min: min + RULES.railFromCity, cost, links };
+  if (place === 'port' && port.name === leg.port.name) return { min: RULES.ferryCheckIn, cost: 0, links: [] };
+  return { min: min + leg.port.mins + RULES.ferryCheckIn, cost: cost + leg.port.cost, links: [...links, leg.port] };
 }
 export const leadFor = (g, leg) => lead(here(g), g.place, leg, g.port);
 
 function withStatus(g, leg, mine) {
   const st = legStatus(g.events, leg, g.world, g.seed, g.clock);
-  const l = mine ? leadFor(g, leg) : { min: 0, cost: 0, shuttle: 0 };
+  const l = mine ? leadFor(g, leg) : { min: 0, cost: 0, links: [] };
   return { leg, ...st, lead: l, total: leg.fare + l.cost };
 }
 
@@ -108,7 +111,7 @@ export function book(g, row, { flex = false } = {}) {
   const { leg } = row;
   const from = g.city, origin = g.world.cities.get(from);
   const terminal = { air: 'airport', rail: 'city', ferry: 'port' }[leg.mode];
-  const port = leg.mode === 'ferry' ? { name: leg.portTo, mins: leg.shuttleTo } : null;
+  const port = leg.mode === 'ferry' ? leg.portTo : null;
   const icon = { air: '✈', rail: '🚆', ferry: '⛴️' }[leg.mode];
   const premium = flex ? row.flexTotal - row.total : 0;
   g.moves++;
@@ -118,7 +121,7 @@ export function book(g, row, { flex = false } = {}) {
     g.clock = row.dep + 10 * MIN;
     // You got as far as the departure point, not onto the ship.
     g.place = terminal;
-    g.port = leg.mode === 'ferry' ? { name: leg.port, mins: leg.shuttle } : null;
+    g.port = leg.mode === 'ferry' ? leg.port : null;
     g.log.push({ t: row.dep, tz: origin.tz, icon: '🏃', text: `Missed ${leg.no} to ${g.world.cities.get(leg.to).name}`, cost: lost });
     finish(g);
     return { missed: true, notes: [flex
@@ -154,9 +157,8 @@ export function visitPlan(g) {
   const { minutes } = local(c.tz, g.clock);
   const fromAirport = g.place === 'airport';
   const plan = {
-    shuttle: g.place === 'port' ? g.port.mins : 0,
     mins: (fromAirport ? c.xfer : g.place === 'port' ? g.port.mins : 0) + RULES.dwell,
-    transfer: fromAirport ? c.xferCost : 0,
+    transfer: fromAirport ? c.xferCost : g.place === 'port' ? g.port.cost : 0,
     fee: Math.round(8 * c.idx),
     why: null,
   };

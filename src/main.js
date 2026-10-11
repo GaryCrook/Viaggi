@@ -21,11 +21,24 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
 
+// Best times for the no-time-limit mode. Kept on this device only.
+const timesKey = (ch) => `tg-times-${ch.id}${ch.key ? `-${ch.key}` : ''}`;
+const bestTimes = (ch) => store.get(timesKey(ch)) || [];
+function addTime(ch, entry) {
+  const list = [...bestTimes(ch), entry].sort((a, b) => a.mins - b.mins || a.spent - b.spent).slice(0, 10);
+  store.set(timesKey(ch), list);
+  return list;
+}
+// Time pill for the HUD: counts down against a deadline, or up when there is none.
+const clockPill = (t) => (g.challenge.untimed
+  ? ['Time taken', fmtDur((t - g.start) / MIN), false]
+  : ['Time left', fmtDur((g.deadline - t) / MIN), (g.deadline - t) / MIN < 8 * 60]);
+
 const ALL_CHALLENGES = [dailyChallenge(createWorld(EUROPE)), ...CHALLENGES];
 
 let world, g, map, popup;
 const pins = new Map();
-const ui = { open: null, filter: 'all', peek: null, busy: false, modal: 'splash', coach: null, challenge: ALL_CHALLENGES[0].id,
+const ui = { open: null, filter: 'all', peek: null, busy: false, modal: 'splash', coach: null, mode: 'race', saved: null, challenge: ALL_CHALLENGES[0].id,
   seenNews: 0, flip: false, keep: [], stamped: null };
 
 // ------------------------------------------------------------------ map
@@ -153,7 +166,7 @@ function travel(from, to, row) {
       label.textContent = fmtTime(tz, clock);
       shade(tz, clock);
       setClock(tz, clock);
-      if (left) left.textContent = fmtDur((g.deadline - clock) / MIN);
+      if (left) left.textContent = clockPill(clock)[1];
       if (ms < dur) requestAnimationFrame(step); else end();
     };
     requestAnimationFrame(step);
@@ -311,11 +324,11 @@ function render() {
 }
 
 function renderHud() {
-  const left = (g.deadline - g.clock) / MIN, cash = G.remaining(g);
+  const cash = G.remaining(g);
   const got = g.challenge.targets.filter((t) => g.collected.includes(t)).length;
   const pill = (label, value, warn) => `<div class="pill ${warn ? 'warn' : ''}"><small>${label}</small><b>${value}</b></div>`;
   $('hud').innerHTML =
-    pill('Time left', fmtDur(left), left < 8 * 60) +
+    pill(...clockPill(g.clock)) +
     pill('Budget left', money(cash), cash < g.challenge.budget * 0.15) +
     pill('Stamps', `${got}/${g.challenge.targets.length}`) +
     '<button class="pill menu" data-act="menu" aria-label="Menu">☰ Menu</button>';
@@ -352,7 +365,7 @@ function renderPanel() {
     <div class="actions">
       <button class="act primary" data-act="visit" ${plan.why ? 'disabled' : ''}>
         <b>${c.emoji} Get passport stamped</b>
-        <small>${plan.why || `${fmtDur(plan.mins)} · ${money(plan.cost)}${plan.transfer ? ' incl. transfer' : plan.shuttle ? ' · free shuttle into town' : ''}`}</small>
+        <small>${plan.why || `${fmtDur(plan.mins)} · ${money(plan.cost)}${plan.transfer ? ' incl. transfer' : ''}`}</small>
       </button>
       <button class="act" data-act="night">
         <b>🛏 Stay the night</b>
@@ -459,8 +472,8 @@ function renderOption(r, from, to, later) {
   if (r.divertTo && r.known) notes.push(`<span class="st-delayed">Diverting to ${world.cities.get(r.divertTo).name}</span>`);
   if (!readOnly && r.lead.cost) notes.push(`incl. ${money(r.lead.cost)} transfer`);
   if (fmtDay(to.tz, r.arr) !== fmtDay(from.tz, r.dep)) notes.push(`arrives ${fmtDay(to.tz, r.arr)}`);
-  if (leg.mode === 'ferry') notes.push(`${leg.port} to ${leg.portTo}`);
-  if (!readOnly && r.lead.shuttle) notes.push(`free shuttle ${fmtDur(r.lead.shuttle)}`);
+  if (leg.mode === 'ferry') notes.push(`${leg.port.name} to ${leg.portTo.name}`);
+  if (!readOnly) r.lead.links.forEach((l) => notes.push(`${l.kind} ${fmtDur(l.mins)} ${l === leg.port ? 'to' : 'from'} ${l.name}`));
   if (leg.berth) notes.push(`${leg.sleeper ? 'sleeper: ' : ''}berth included, no hotel`);
   if (leg.seats) notes.push(`${leg.seats} seat${leg.seats > 1 ? 's' : ''} left`);
   if (!readOnly && r.tight) notes.push(`<span class="st-delayed">${Math.round(r.tight.p * 100)}% chance you make it</span>`);
@@ -501,7 +514,7 @@ function flipBoard() {
 
 // ------------------------------------------------------------------ modals
 
-const SHEETS = { splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
+const SHEETS = { times: timesSheet, splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
 
 function renderModal() {
   const el = $('modal');
@@ -535,11 +548,25 @@ function splashSheet() {
     <div class="startbar">${buttons}</div>`;
 }
 
+const timeRows = (list, mark) => list.map((e, i) =>
+  `<li class="${e === mark || (mark && e.at === mark.at) ? 'me' : ''}"><i>${i + 1}</i><b>${e.name}</b><span>${fmtDur(e.mins)}</span><small>${money(e.spent)}</small></li>`).join('');
+
+function timesSheet() {
+  const blocks = ALL_CHALLENGES.map((ch) => {
+    const list = bestTimes(ch);
+    return list.length ? `<h3 class="how">${ch.name}</h3><ol class="times">${timeRows(list.slice(0, 5))}</ol>` : '';
+  }).join('');
+  return `<h2>Best times</h2>
+    <p>Fastest finishes in the no-time-limit mode, on this device.</p>
+    ${blocks || '<p>No times yet. Pick “No time limit”, finish a journey and save your time.</p>'}
+    <div class="row-btns"><button class="btn" data-act="journeys">Back</button></div>`;
+}
+
 function menuSheet() {
   const got = g.challenge.targets.filter((t) => g.collected.includes(t)).length;
   return `
     <h2>${g.challenge.name}</h2>
-    <p>${got} of ${g.challenge.targets.length} stamps · ${fmtDur((g.deadline - g.clock) / MIN)} left · ${money(G.remaining(g))} left</p>
+    <p>${got} of ${g.challenge.targets.length} stamps · ${clockPill(g.clock)[1]} ${g.challenge.untimed ? 'so far' : 'left'} · ${money(G.remaining(g))} left</p>
     <div class="menu-list">
       <button class="btn big" data-act="close">Keep playing</button>
       <button class="btn ghost" data-act="passport">Passport</button>
@@ -555,20 +582,31 @@ function startSheet() {
     const cities = ch.targets.map((id) => EUROPE.cities.find((c) => c.id === id));
     const best = ch.key && store.get(`tg-daily-${ch.key}`);
     const from = ch.home === 'LON' ? '' : `From ${EUROPE.cities.find((c) => c.id === ch.home).name}: `;
+    const top = bestTimes(ch)[0];
+    const limits = ui.mode === 'free'
+      ? `no time limit · ${money(ch.budget)}${top ? ` · best ${fmtDur(top.mins)} (${top.name})` : ''}`
+      : `${ch.hours}h · ${money(ch.budget)}${best ? ` · best ${best.points}` : ''}`;
     return `<button class="card ${ui.challenge === ch.id ? 'on' : ''}" data-act="pick" data-id="${ch.id}">
       <b>${ch.name}</b><span class="lvl">${ch.level}</span>
       <small>${ch.blurb}</small>
-      <span class="meta">${ch.rail ? `${ch.rail === 'international' ? `International${ch.domestic ? ` + ${ch.domestic.map((c) => EUROPE.countryNames[c].replace('the ', '')).join(', ')}` : ''}` : `${EUROPE.countryNames[ch.rail].replace('the ', '')} only`} · ` : ''}${cities.map((c) => c.emoji).join(' ')} · ${ch.hours}h · ${money(ch.budget)}${best ? ` · best ${best.points}` : ''}</span>
+      <span class="meta">${ch.rail ? `${ch.rail === 'international' ? `International${ch.domestic ? ` + ${ch.domestic.map((c) => EUROPE.countryNames[c].replace('the ', '')).join(', ')}` : ''}` : `${EUROPE.countryNames[ch.rail].replace('the ', '')} only`} · ` : ''}${cities.map((c) => c.emoji).join(' ')} · ${limits}</span>
       <small>${from}${cities.map((c) => c.name).join(', ')}</small>
     </button>`;
   };
   const pack = (id) => ALL_CHALLENGES.filter((ch) => ch.pack === id).map(card).join('');
   return `
     <h2>Choose a journey</h2>
-    <p><button class="link" data-act="help">How to play</button> · <button class="link" data-act="train">Guided training flight</button></p>
+    <p><button class="link" data-act="help">How to play</button> · <button class="link" data-act="train">Guided training flight</button> · <button class="link" data-act="times">Best times</button></p>
+    <div class="seg light">
+      <button class="${ui.mode === 'race' ? 'on' : ''}" data-act="mode" data-id="race">⏱ Against the clock</button>
+      <button class="${ui.mode === 'free' ? 'on' : ''}" data-act="mode" data-id="free">🏁 No time limit</button>
+    </div>
+    <p class="modehint">${ui.mode === 'free'
+      ? 'No deadline. Collect every stamp and get home as fast as you can; your time goes on the leaderboard. The budget still applies.'
+      : 'Beat the deadline and the budget. Stars for finishing, thrift and speed, plus bonus tickets.'}</p>
     <div class="packhead first"><b>✈ By air</b><span>Fly between 45 cities. Airports are out of town, so allow for transfers.</span></div>
     <div class="cards">${pack('air')}</div>
-    <div class="packhead"><b>🚆 Rail and sail</b><span>No flying. International journeys show cross-border trains between major cities; single-country journeys show that country’s network. Ferries offer a slower, cheaper way round: a free shuttle links each port with the station, and an overnight sailing or a sleeper train is your bed for the night.</span></div>
+    <div class="packhead"><b>🚆 Rail and sail</b><span>No flying. International journeys show cross-border trains between major cities; single-country journeys show that country’s network. Ferries offer a slower, cheaper way round from ports a short taxi ride or an easy train from the station, and an overnight sailing or a sleeper train is your bed for the night.</span></div>
     <div class="cards">${pack('rail')}</div>
     <div class="startbar"><button class="btn big" data-act="start">Start ${ALL_CHALLENGES.find((ch) => ch.id === ui.challenge).name}</button></div>`;
 }
@@ -647,7 +685,36 @@ function shareText(s) {
     `${stars} ${s.points} pts`, `${fmtDur(s.hours * 60)} · ${money(s.spent)} · 🎫 ${s.ticketsDone}/${s.tickets.length}`, route].join('\n');
 }
 
+function freeEndSheet() {
+  const s = G.score(g), ch = g.challenge, mins = Math.round(s.hours * 60);
+  const list = bestTimes(ch);
+  const rank = list.filter((e) => e.mins < mins || (e.mins === mins && e.spent <= s.spent)).length + 1;
+  const title = s.won ? 'Home with a full passport!' : g.over === 'broke' ? 'Out of money' : 'Journey abandoned';
+  const got = ch.targets.filter((t) => g.collected.includes(t)).length;
+  let entry = '';
+  if (s.won && ui.saved) entry = `<p class="rank">Saved. You are number ${list.findIndex((e) => e.at === ui.saved.at) + 1} on this device.</p>`;
+  else if (s.won && rank <= 10) {
+    entry = `<p class="rank">That is number ${rank} on this device.</p>
+      <div class="namerow"><input id="who" maxlength="14" placeholder="Your name" value="${store.get('tg-name') || ''}" autocomplete="off">
+      <button class="btn" data-act="savetime">Save my time</button></div>`;
+  } else if (s.won) entry = '<p class="rank">Outside the top ten this time.</p>';
+  return `
+    <h2>${title}</h2>
+    <p>${s.won ? `${ch.name}, no time limit.` : `${got} of ${ch.targets.length} stamps collected. No time recorded.`}</p>
+    <div class="facts">
+      <div><small>Time</small><b>${fmtDur(mins)}</b></div>
+      <div><small>Spent</small><b>${money(s.spent)}</b></div>
+      <div><small>Nights</small><b>${g.nights}</b></div>
+    </div>
+    ${entry}
+    ${list.length ? `<h3 class="how">Best times</h3><ol class="times">${timeRows(list, ui.saved)}</ol>` : ''}
+    <div class="page grid small">${G.stampCities(g).map((id) => stampHTML(id)).join('')}</div>
+    <ul class="log">${logItems()}</ul>
+    <div class="row-btns"><button class="btn" data-act="again">Play again</button></div>`;
+}
+
 function endSheet() {
+  if (g.challenge.untimed) return freeEndSheet();
   const s = G.score(g), ch = g.challenge;
   const title = s.won && ch.training ? 'Training complete' : s.won ? 'Home with a full passport!' : g.over === 'timeout' ? 'Out of time' : g.over === 'broke' ? 'Out of money' : 'Journey abandoned';
   const got = ch.targets.filter((t) => g.collected.includes(t)).length;
@@ -695,7 +762,7 @@ function afterMove(notes = [], modal = null) {
   ui.open = null; ui.peek = null; ui.busy = false; ui.flip = true;
   popup?.remove();
   ui.modal = g.over ? 'end' : modal || (G.isNight(g) ? 'night' : null);
-  if (g.over && g.challenge.key) {
+  if (g.over && g.challenge.key && !g.challenge.untimed) {
     const s = G.score(g), k = `tg-daily-${g.challenge.key}`, old = store.get(k);
     if (!old || s.points > old.points) store.set(k, { points: s.points, stars: s.stars });
   }
@@ -704,12 +771,18 @@ function afterMove(notes = [], modal = null) {
 }
 
 function start() {
-  const ch = ALL_CHALLENGES.find((c) => c.id === ui.challenge);
+  const base = ALL_CHALLENGES.find((c) => c.id === ui.challenge), free = ui.mode === 'free';
+  const ch = free ? { ...base, untimed: true } : base;
   world = createWorld(EUROPE, ch.modes, ch);
   showNetwork();
-  g = G.newGame(world, ch, params.get('seed') || ch.seed || undefined);
+  // With no time limit everyone gets the same disruption, so times can be compared.
+  g = G.newGame(world, ch, params.get('seed') || (free ? `free-${timesKey(ch)}` : ch.seed) || undefined);
   $('toasts').innerHTML = '';
-  Object.assign(ui, { open: null, filter: 'all', peek: null, busy: false, modal: 'tickets', seenNews: 0, keep: [0], coach: null });
+  Object.assign(ui, { open: null, filter: 'all', peek: null, busy: false, modal: 'tickets', seenNews: 0, keep: [0], coach: null, saved: null });
+  if (free) {
+    afterMove([`${fmtDay(G.here(g).tz, g.clock)}, 08:00. ${ch.targets.length} stamps, ${money(ch.budget)}, no time limit. Fastest home wins.`]);
+    return;
+  }
   render();
   frame();
 }
@@ -752,6 +825,14 @@ const actions = {
   open: (id) => { ui.open = ui.open === id ? null : id; },
   filter: (id) => { ui.filter = id; ui.open = null; ui.flip = true; if (id === 'routes' && ui.coach) ui.coach.routes = true; },
   train: startTraining,
+  mode: (id) => { ui.mode = id; },
+  times: () => { ui.modal = 'times'; },
+  savetime: () => {
+    const name = ($('who').value.trim() || 'Traveller').replace(/[<>&]/g, '').slice(0, 14), s = G.score(g);
+    store.set('tg-name', name);
+    ui.saved = { name, mins: Math.round(s.hours * 60), spent: s.spent, at: Date.now() };
+    addTime(g.challenge, ui.saved);
+  },
   journeys: () => { ui.modal = 'start'; },
   help: () => { ui.modal = 'splash'; },
   coachnext: () => { ui.coach.intro = false; },

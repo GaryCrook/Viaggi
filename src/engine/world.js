@@ -70,9 +70,10 @@ const PROVIDERS = {
         mode: 'rail', carrier: { code, name, type: 'rail' }, freq, km: distKm(A, B), pair: `${code}-${a}-${b}`,
         dayP: 1, durMin, sleeper: !!sleeper, perWeek: sleeper ? [sleeper, sleeper] : null,
         cabin: Math.round(35 * ((A.idx + B.idx) / 2)),
-        // A sleeper is slow for its distance, so it is priced well below a day train of the same length.
+        // Rail fares rise more slowly than journey time, and only partly with local prices.
+        // A sleeper is slow for its distance, so its seat fare is below a day train of the same length.
         fare: (tod, _season, scarcity) =>
-          (8 + 0.28 * (sleeper ? durMin * 0.45 : durMin)) * ((A.idx + B.idx) / 2) * tod * (1 + (scarcity - 1) * 0.6) * (premium ? 1.7 : 1),
+          (5 + 0.75 * (sleeper ? durMin * 0.6 : durMin) ** 0.75) * Math.sqrt((A.idx + B.idx) / 2) * tod * (1 + (scarcity - 1) * 0.6) * (premium ? 1.7 : 1),
       };
       out.push({ ...base, from: a, to: b }, { ...base, from: b, to: a, back: true });
     }
@@ -80,18 +81,22 @@ const PROVIDERS = {
   },
 
   // Ferries follow the same scope as rail. `perWeek` holds summer and winter sailings.
+  // Each end has a link between station and port: a short taxi for a nominal
+  // fee, or a train at a per-minute fare.
   ferry(region, cities, opts = {}) {
     const out = [];
-    for (const [a, portA, shuttleA, b, portB, shuttleB, durMin, summer, winter, code, name] of region.ferries || []) {
+    const link = (city, name, kind, mins) =>
+      ({ name, kind, mins, cost: Math.round((kind === 'taxi' ? 8 : 0.25 * mins) * city.idx) });
+    for (const [a, portA, kindA, minsA, b, portB, kindB, minsB, durMin, summer, winter, code, name] of region.ferries || []) {
       const A = cities.get(a), B = cities.get(b);
       if (!inScope(opts, A, B, false)) continue;
       const base = {
         mode: 'ferry', carrier: { code, name, type: 'ferry' }, km: distKm(A, B), pair: `${code}-${a}-${b}`,
-        perWeek: [summer, winter], durMin, cabin: Math.round(30 * ((A.idx + B.idx) / 2)),
-        fare: (_tod, season, scarcity) => (12 + 0.04 * durMin) * (season > 1.1 ? 1.3 : 1) * (1 + (scarcity - 1) * 0.5),
+        perWeek: [summer, winter], durMin, cabin: Math.round(25 * ((A.idx + B.idx) / 2)),
+        fare: (_tod, season, scarcity) => (10 + 0.03 * durMin) * (season > 1.1 ? 1.3 : 1) * (1 + (scarcity - 1) * 0.5),
       };
-      out.push({ ...base, from: a, to: b, port: portA, shuttle: shuttleA, portTo: portB, shuttleTo: shuttleB },
-        { ...base, from: b, to: a, port: portB, shuttle: shuttleB, portTo: portA, shuttleTo: shuttleA, back: true });
+      const pa = link(A, portA, kindA, minsA), pb = link(B, portB, kindB, minsB);
+      out.push({ ...base, from: a, to: b, port: pa, portTo: pb }, { ...base, from: b, to: a, port: pb, portTo: pa, back: true });
     }
     return out;
   },
@@ -165,7 +170,7 @@ export function createWorld(region, modes = ['air'], opts = {}) {
         legs.push({
           id, mode: s.mode, from: s.from, to: s.to, dep, arr: dep + s.durMin * MIN, durMin: s.durMin, km: s.km,
           carrier: s.carrier.name, code: s.carrier.code, kind: s.carrier.type, no: `${s.carrier.code} ${number + i * 2}`,
-          port: s.port, shuttle: s.shuttle, portTo: s.portTo, shuttleTo: s.shuttleTo, berth, sleeper: !!s.sleeper,
+          port: s.port || null, portTo: s.portTo || null, berth, sleeper: !!s.sleeper,
           fare: Math.max(9, Math.round(s.fare(timeOfDay(minutes), SEASON[m - 1], scarcity))) + (berth ? s.cabin : 0),
           seats: tight > 0.85 ? 1 + Math.floor(rand(`left|${id}`) * 4) : null,
         });
