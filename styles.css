@@ -491,3 +491,16 @@ button:disabled { cursor: not-allowed; }
 .pin.spoke span, .pin.hub span, .pin.spoke:not(.target):not(.home):not(:hover) span { opacity: 0 !important; }
 
 .credit { font-size: 11px !important; line-height: 1.45 !important; opacity: .8; }
+
+/* ---------- Left without a stamp ---------- */
+.slot.missed { color: #b4322a; }
+.slot.missed i { border: 2px dashed #b4322a; opacity: .8; }
+
+.doh { display: block; width: 100%; margin: 6px 0 12px; }
+.doh .burst { transform-box: fill-box; transform-origin: center; animation: dohpop .5s cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes dohpop { from { transform: scale(0) rotate(-25deg); } to { transform: none; } }
+.doh .slap { transform-box: fill-box; transform-origin: 0 100%; animation: dohslap .9s ease-out both; }
+@keyframes dohslap { 0% { transform: rotate(38deg); } 35% { transform: rotate(-4deg); } 55% { transform: rotate(5deg); } 100% { transform: none; } }
+.doh .lines { animation: dohlines 1.1s ease-out .3s both; }
+@keyframes dohlines { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .doh * { animation: none !important; } }

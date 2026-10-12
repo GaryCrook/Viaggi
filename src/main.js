@@ -514,7 +514,8 @@ function renderPanel() {
   const plan = G.visitPlan(g);
   const slots = G.stampCities(g).map((id) => {
     const t = world.cities.get(id);
-    return `<div class="slot ${g.collected.includes(id) ? 'done' : id === g.city ? 'due' : ''}"><i>${t.emoji}</i>${t.name}</div>`;
+    const state = g.collected.includes(id) ? 'done' : id === g.city ? 'due' : g.skipped.includes(id) ? 'missed' : '';
+    return `<div class="slot ${state}"><i>${t.emoji}</i>${t.name}${state === 'missed' ? ' ↩' : ''}</div>`;
   }).join('');
   const tickets = G.tickets(g).map((t) =>
     `<span class="tkt ${t.status}" title="${t.text}">${t.status === 'done' ? '✓' : t.status === 'failed' ? '✗' : '🎫'} ${t.name}</span>`).join('');
@@ -700,7 +701,7 @@ function flipBoard() {
 
 // ------------------------------------------------------------------ modals
 
-const SHEETS = { clocks: clocksSheet, missed: missedSheet, times: timesSheet, splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
+const SHEETS = { leaving: leavingSheet, left: leftSheet, clocks: clocksSheet, missed: missedSheet, times: timesSheet, splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
 
 function renderModal() {
   const el = $('modal');
@@ -811,6 +812,54 @@ function ticketSheet() {
     <p>You have drawn two secret tickets. Keep one or both. Each one you complete is worth ${G.RULES.ticketPoints} points; each one you keep and fail costs ${G.RULES.ticketPoints}.</p>
     <div class="cards">${cards}</div>
     <button class="btn big" data-act="depart" ${ui.keep.length ? '' : 'disabled'}>${ui.keep.length ? `Keep ${ui.keep.length === 2 ? 'both' : 'one'} and depart` : 'Keep at least one'}</button>`;
+}
+
+// The traveller slapping their forehead: drawn in the same style as the walk home.
+const DOH = `
+  <svg class="doh" viewBox="0 0 320 150" role="img" aria-label="A traveller slapping their forehead: Doh!">
+    <rect width="320" height="150" rx="12" fill="#f6dcd2"/>
+    <g class="burst"><path d="M196 18l14 12 16-10-2 18 18 6-15 10 8 17-18-3-6 18-11-15-16 9 3-18-17-7 15-9-6-17 17 4z" fill="#e2532d"/>
+      <text x="212" y="57" text-anchor="middle" font-size="19" font-weight="700" fill="#fff" transform="rotate(-8 212 52)">DOH!</text></g>
+    <g class="lines" stroke="#e2532d" stroke-width="3" stroke-linecap="round"><path d="M104 30l-8-9M118 24l-2-12M132 28l6-10"/></g>
+    <g transform="translate(118 132)" fill="none" stroke="#1c2b3a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M-7 0L0 -30L9 0"/>
+      <path d="M0 -30L0 -62"/>
+      <path class="slap" d="M0 -56L18 -66L8 -84"/>
+      <path d="M0 -54L-16 -36"/>
+      <rect x="-27" y="-40" width="13" height="17" rx="2" fill="#7b1e2b" stroke="#1c2b3a" stroke-width="2.5" transform="rotate(-18 -20 -32)"/>
+      <circle cx="0" cy="-76" r="12" fill="#fbf8f1" stroke-width="4"/>
+      <path d="M-6 -78l4 2M6 -78l-3 2" stroke-width="2.4"/><path d="M-4 -69q4 -4 8 0" stroke-width="2.4"/>
+      <path class="slap" d="M2 -88q8 -2 11 5" stroke-width="5"/>
+    </g>
+  </svg>`;
+
+// Easy journeys and training warn before you leave a city without its stamp.
+// Harder ones let you make the mistake and tell you afterwards.
+const gentle = () => ['Easy', 'Guided'].includes(g.challenge.level);
+
+function leavingSheet() {
+  const c = G.here(g), plan = G.visitPlan(g), to = world.cities.get(ui.pending.to);
+  return `
+    <h2>Leave ${c.name} without your stamp?</h2>
+    <div class="page">${stampHTML(c.id, true)}</div>
+    <p>${c.name} is on your list and your passport has not been stamped here yet. If you travel on to ${to.name} now, you will have to come back to ${c.name} later to get it.</p>
+    <div class="row-btns">
+      <button class="btn ghost" data-act="leaveanyway">Travel on anyway</button>
+      <button class="btn" data-act="visit" ${plan.why ? 'disabled' : ''}>${c.emoji} Get it stamped first${plan.why ? '' : ` · ${fmtDur(plan.mins)}`}</button>
+    </div>`;
+}
+
+// Shown on arrival when the player has just left a listed city without its stamp.
+function leftSheet() {
+  const c = world.cities.get(ui.left), here = G.here(g);
+  const back = G.board(g).filter((r) => r.leg.to === c.id && (r.bookable || r.tight)).length;
+  return `
+    <h2>You left ${c.name} without your stamp</h2>
+    ${DOH}
+    <p class="lost">Your passport was not stamped in ${c.name}. To complete the journey you will need to go back to ${c.name} and get it.</p>
+    <p>You are now in ${here.name}. ${back ? `There ${back === 1 ? 'is 1 departure' : `are ${back} departures`} back to ${c.name} today.` : `Nothing goes direct to ${c.name} from here today; check the Routes tab.`}
+      Next time, tap “Get passport stamped” before you travel on.</p>
+    <div class="row-btns"><button class="btn" data-act="close">Understood</button></div>`;
 }
 
 // Shown when a run for a tight departure fails. A flexible ticket moves you to
@@ -1074,9 +1123,16 @@ function depart() {
   afterMove([`${fmtDay(G.here(g).tz, g.clock)}, 08:00. ${ch.targets.length} stamps, ${ch.hours} hours, ${money(ch.budget)}. Go!`]);
 }
 
-async function go(legId, flex = false, credit = 0) {
+async function go(legId, flex = false, credit = 0, confirmed = false) {
   const row = G.board(g).find((r) => r.leg.id === legId);
   if (!row || !(row.bookable || row.tight) || ui.busy) return;
+  if (gentle() && !confirmed && G.stampCities(g).includes(g.city) && !g.collected.includes(g.city)) {
+    ui.pending = { legId, flex, credit, to: row.leg.to };
+    ui.modal = 'leaving';
+    popup?.remove();
+    render();
+    return;
+  }
   popup?.remove();
   ui.routes = null;
   sfx.unlock();
@@ -1096,7 +1152,9 @@ async function go(legId, flex = false, credit = 0) {
   map.fitBounds(new maplibregl.LngLatBounds([from.lon, from.lat], [from.lon, from.lat]).extend([to.lon, to.lat]),
     { padding: 90, maxZoom: 6, duration: 500 });
   await travel(from, to, row);
-  afterMove(G.book(g, row, { flex, credit }).notes);
+  const out = G.book(g, row, { flex, credit });
+  ui.left = out.skipped;
+  afterMove(out.notes, out.skipped && !gentle() ? 'left' : null);
 }
 
 const actions = {
@@ -1126,6 +1184,7 @@ const actions = {
   coachnext: () => { ui.coach.intro = false; },
   go: (id) => go(id),
   goflex: (id) => go(id, true),
+  leaveanyway: () => go(ui.pending.legId, ui.pending.flex, ui.pending.credit, true),
   rebook: () => go(ui.missed.next.leg.id, false, ui.missed.out.credit),
   refund: () => { G.refund(g, ui.missed.out.credit); ui.modal = G.isNight(g) && G.visitPlan(g).why ? 'night' : null; },
   visit: () => {
@@ -1138,7 +1197,7 @@ const actions = {
   unpeek: () => { ui.peek = null; ui.open = null; ui.flip = true; },
   passport: () => { ui.modal = 'passport'; },
   log: () => { ui.modal = 'log'; },
-  close: () => { ui.modal = ['stamp', 'missed'].includes(ui.modal) && G.isNight(g) && G.visitPlan(g).why ? 'night' : null; },
+  close: () => { ui.modal = ['stamp', 'missed', 'left'].includes(ui.modal) && G.isNight(g) && G.visitPlan(g).why ? 'night' : null; },
   menu: () => { popup?.remove(); ui.modal = 'menu'; },
   quit: () => { g.over = 'quit'; ui.modal = 'end'; $('toasts').innerHTML = ''; },
   share: async (_, el) => {
@@ -1147,7 +1206,7 @@ const actions = {
   },
 };
 
-const SELF_RENDERING = ['start', 'train', 'depart', 'go', 'goflex', 'rebook', 'visit', 'sleep', 'share'];
+const SELF_RENDERING = ['start', 'train', 'depart', 'go', 'goflex', 'rebook', 'leaveanyway', 'visit', 'sleep', 'share'];
 
 document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]');

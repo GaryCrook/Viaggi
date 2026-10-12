@@ -29,7 +29,7 @@ export function newGame(world, challenge, seed = String(Date.now())) {
     // `untimed` challenges have no deadline: the aim is simply the fastest finish.
     deadline: challenge.untimed ? Infinity : start + challenge.hours * HOUR,
     spent: 0, city: challenge.home, place: world.modes.includes('air') ? 'airport' : 'city', collected: [], stampAt: {}, stampVia: {}, arrivedBy: null,
-    lookups: RULES.lookupsPerDay, peeked: [], path: [], log: [], nights: 0, hotels: 0, moves: 0, over: null,
+    lookups: RULES.lookupsPerDay, peeked: [], skipped: [], path: [], log: [], nights: 0, hotels: 0, moves: 0, over: null,
     port: null, landed: [challenge.home], carriers: [], trains: 0, lowcost: false, tickets: [],
   };
   // Training is a calm first trip: no disruption and no bonus tickets.
@@ -130,6 +130,9 @@ export function book(g, row, { flex = false, credit = 0 } = {}) {
     return { missed: true, notes: [], lost, credit: flex ? leg.fare : 0, premium, transfer: row.lead.cost };
   }
   const to = row.divertTo ?? leg.to, dest = g.world.cities.get(to);
+  // Leaving a city on your list without its stamp means coming back for it later.
+  const skipped = stampCities(g).includes(from) && !g.collected.includes(from) ? from : null;
+  if (skipped && !g.skipped.includes(from)) g.skipped.push(from);
   const notes = [], charge = Math.max(0, row.total - credit) + premium;
   g.spent += charge;
   g.clock = row.arr;
@@ -151,7 +154,7 @@ export function book(g, row, { flex = false, credit = 0 } = {}) {
   if (row.tight) notes.push(`Made it! You ran for ${leg.no} and got on.`);
   if (row.divertTo) notes.push(`Diverted! ${g.world.cities.get(leg.to).name} airport is closed, so you have landed in ${dest.name}.`);
   finish(g);
-  return { missed: false, notes };
+  return { missed: false, notes, skipped };
 }
 
 // Give back a flexible fare that could not be used on a later departure.
