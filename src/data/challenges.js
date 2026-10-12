@@ -5,15 +5,15 @@
 export const CHALLENGES = [
   {
     id: 'dash', pack: 'air', modes: ['air'], name: 'Weekend Dash', blurb: 'Three northern capitals and home in time for Monday.',
-    home: 'LON', targets: ['AMS', 'CPH', 'BER'], date: [2026, 10, 17], hours: 40, budget: 780, parHours: 31, level: 'Easy',
+    home: 'LON', targets: ['AMS', 'CPH', 'BER'], date: [2026, 10, 17], hours: 36, budget: 680, parHours: 27, level: 'Easy',
   },
   {
     id: 'grand', pack: 'air', modes: ['air'], name: 'The Grand Tour', blurb: 'Six great cities at the height of summer, when every seat costs more.',
     home: 'LON', targets: ['BCN', 'ROM', 'ATH', 'VIE', 'BER', 'STO'], date: [2026, 7, 13], hours: 80, budget: 2150, parHours: 64, level: 'Medium',
   },
   {
-    id: 'edges', pack: 'air', modes: ['air'], name: 'Edges of Europe', blurb: 'The Arctic, the Azores and the Greek mountains. No flight from London reaches any of them: each needs a connection through its home hub.',
-    home: 'LON', targets: ['TOS', 'PDL', 'IOA'], date: [2026, 6, 8], hours: 112, budget: 2900, parHours: 94, level: 'Hard',
+    id: 'edges', pack: 'air', modes: ['air'], name: 'Edges of Europe', blurb: 'Arctic Norway, northern Finland and the Greek mountains. In summer no flight from London reaches any of them: each needs a connection.',
+    home: 'LON', targets: ['TOS', 'OUL', 'IOA'], date: [2026, 6, 8], hours: 128, budget: 2900, parHours: 92, level: 'Hard',
   },
   // Rail expansion: train-only journeys. `rail` is the timetable in play:
   // 'international' shows only cross-border trains between major cities;

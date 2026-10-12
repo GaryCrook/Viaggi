@@ -259,17 +259,55 @@ button:disabled { cursor: not-allowed; }
 .where { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .clock { flex: none; width: 92px; text-align: center; line-height: 1.1; }
 .clock svg { width: 84px; height: 84px; display: block; margin: 0 auto 4px; filter: drop-shadow(0 2px 5px rgb(28 43 58 / .18)); }
-.clock .face { fill: #fff; stroke: var(--ink); stroke-width: 3; transition: fill .4s; }
-.clock .ticks line { stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
-.clock .hour { stroke: var(--ink); stroke-width: 6; stroke-linecap: round; }
-.clock .minute { stroke: var(--accent); stroke-width: 3.5; stroke-linecap: round; }
-.clock .hub { fill: var(--ink); }
 .clock b { display: block; font-family: var(--mono); font-size: 20px; font-weight: 600; }
 .clock small { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
-.clock.night .face { fill: var(--ink); stroke: #0c1622; }
-.clock.night .ticks line, .clock.night .hour { stroke: #fff; }
-.clock.night .minute { stroke: var(--amber); }
-.clock.night .hub { fill: #fff; }
+.dial .face { transition: fill .4s; }
+.dial .serif { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; }
+.dial .hour, .dial .minute { transition: none; }
+
+/* Platform classic: dark green case, brass bezel, Roman numerals */
+.c-platform .case { fill: #16261f; }
+.c-platform .bezel { fill: none; stroke: #b08d57; stroke-width: 2; }
+.c-platform .face { fill: #fbf7ea; }
+.c-platform .ticks line { stroke: #1b1b1b; }
+.c-platform .numerals { fill: #1b1b1b; }
+.c-platform .hour, .c-platform .minute, .c-platform .hub { fill: #111; }
+
+/* Continental station: white face, bold bar markers */
+.c-continental .case { fill: #1b1d21; }
+.c-continental .face { fill: #fff; }
+.c-continental .ticks line { stroke: #111; }
+.c-continental .hour, .c-continental .minute, .c-continental .hub { fill: #111; }
+
+/* Ticket hall brass: brass rim, cream face, blued hands */
+.c-brass .case { fill: #a57c3a; }
+.c-brass .bezel { fill: #d9b872; stroke: #7d5a22; stroke-width: 1; }
+.c-brass .face { fill: #f7efd9; stroke: #7d5a22; stroke-width: 0.8; }
+.c-brass .ticks circle, .c-brass .numerals, .c-brass .maker { fill: #2a2118; }
+.c-brass .maker { opacity: .55; }
+.c-brass .hour, .c-brass .minute { fill: #1f3a5f; }
+.c-brass .hub { fill: #7d5a22; }
+
+/* Modern: the original plain face */
+.c-modern .face { fill: #fff; stroke: var(--ink); stroke-width: 3; }
+.c-modern .ticks line { stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
+.c-modern .hour { stroke: var(--ink); stroke-width: 6; stroke-linecap: round; }
+.c-modern .minute { stroke: var(--accent); stroke-width: 3.5; stroke-linecap: round; }
+.c-modern .hub { fill: var(--ink); }
+.clock.night .c-modern .face { fill: var(--ink); stroke: #0c1622; }
+.clock.night .c-modern .ticks line, .clock.night .c-modern .hour { stroke: #fff; }
+.clock.night .c-modern .minute { stroke: var(--amber); }
+.clock.night .c-modern .hub { fill: #fff; }
+
+/* The traditional faces are lit from within at night, as station clocks are */
+.clock.night .dial:not(.c-modern) { filter: drop-shadow(0 0 7px rgb(255 190 80 / .9)); }
+.clock.night .dial:not(.c-modern) .face { fill: #ffe9a8; }
+.clock.night small { color: #8a6200; }
+
+.clockgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+.clockcard { display: block; text-align: center; padding: 14px 10px; }
+.clockcard svg { width: 110px; height: 110px; display: block; margin: 0 auto 8px; filter: drop-shadow(0 2px 5px rgb(28 43 58 / .2)); }
+.clockcard b { display: block; }
 
 /* ---------- Hotel bill ---------- */
 .bill { list-style: none; margin: 0 0 14px; padding: 4px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; font-size: 15px; }
@@ -428,3 +466,28 @@ button:disabled { cursor: not-allowed; }
 .walk .rain { animation: rain .7s linear infinite; }
 @keyframes rain { from { transform: translateY(-2px); opacity: 1; } to { transform: translateY(8px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .walk * { animation: none !important; } }
+
+/* ---------- Route map from a tapped city ---------- */
+.pin .tag { display: none; position: absolute; left: 0; top: 0; transform: translate(-50%, calc(-100% - 9px)); background: #3a3f47; color: #fff; font: 600 10px/1 var(--mono); padding: 3px 5px; border-radius: 4px; white-space: nowrap; box-shadow: 0 1px 3px rgb(0 0 0 / .4); pointer-events: none; }
+.pin .tag::after { content: ''; position: absolute; left: 50%; top: 100%; margin-left: -4px; border: 4px solid transparent; border-top-color: #3a3f47; border-bottom: 0; }
+.pin.spoke .tag, .pin.hub .tag { display: block; }
+.pin.spoke { z-index: 3; }
+.pin.spoke:not(.target):not(.home) i { background: #f28c28; width: 9px; height: 9px; }
+.pin.spoke:not(.target):not(.home):not(:hover) span { opacity: 0; }
+.pin.hub { z-index: 6; }
+.pin.hub .tag { background: #f28c28; font-size: 13px; padding: 5px 8px; transform: translate(-50%, calc(-100% - 14px)); }
+.pin.hub .tag::after { border-top-color: #f28c28; }
+.pin.target.spoke .tag, .pin.home.spoke .tag { transform: translate(-50%, calc(-100% - 18px)); }
+.pin.target.hub .tag, .pin.home.hub .tag { transform: translate(-50%, calc(-100% - 20px)); }
+.pin.faded:not(.target):not(.home):not(.here) { opacity: .25; }
+
+#caption { position: absolute; top: 74px; left: 14px; right: 14px; display: flex; pointer-events: none; }
+#caption > div { pointer-events: auto; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; max-width: 100%; background: #3a3f47; color: #fff; border-radius: 12px; padding: 8px 10px 8px 14px; box-shadow: 0 2px 10px rgb(0 0 0 / .25); font-size: 13px; }
+#caption b { color: #ffb561; font-size: 14px; }
+#caption span { opacity: .9; }
+#caption button { color: #fff; font-size: 14px; padding: 2px 6px; margin-left: auto; opacity: .8; }
+@media (max-width: 800px) { #caption { top: 58px; left: 8px; right: 8px; } #caption > div { font-size: 12px; padding: 6px 8px 6px 10px; } }
+
+.pin.spoke span, .pin.hub span, .pin.spoke:not(.target):not(.home):not(:hover) span { opacity: 0 !important; }
+
+.credit { font-size: 11px !important; line-height: 1.45 !important; opacity: .8; }

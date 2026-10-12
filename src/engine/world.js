@@ -18,6 +18,49 @@ function timeOfDay(minutes) {
   return 1;
 }
 
+const airFare = (km, lowcost) => (tod, season, scarcity) =>
+  (15 + 0.35 * km ** 0.8) * season * tod * scarcity * (lowcost ? 0.65 : 1.15);
+
+// Flights from the real route list: which airline flies between which cities,
+// and whether only for part of the year. How often each route runs is not in
+// the data, so it is estimated from the airline's kind and the size of the cities.
+function realAir(region, cities) {
+  const hubs = new Map(region.carriers.map((k) => [k.code, Object.keys(k.hubs)]));
+  const merged = new Map();
+  for (const [a, b, name, seasonal] of region.airRoutes) {
+    if (region.airlinesDropped.includes(name)) continue;
+    const A = cities.get(a), B = cities.get(b);
+    if (!A || !B || A.railOnly || B.railOnly) continue;
+    const [code, kind, shown] = region.airlines[name]
+      || [name.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase(), 'lowcost'];
+    const key = `${code}-${a}-${b}`, old = merged.get(key);
+    // The same pair can be listed under a parent and its subsidiary: year-round wins.
+    merged.set(key, { a, b, code, kind, name: shown || name, seasonal: old ? old.seasonal && !!seasonal : !!seasonal });
+  }
+  const out = [];
+  for (const r of merged.values()) {
+    const A = cities.get(r.a), B = cities.get(r.b), km = distKm(A, B);
+    const tA = Math.min(3, A.tier), tB = Math.min(3, B.tier), lowcost = r.kind === 'lowcost';
+    const atHub = (hubs.get(r.code) || []).some((h) => h === r.a || h === r.b);
+    const remote = A.tier === 4 || B.tier === 4;
+    const base = {
+      mode: 'air', carrier: { code: r.code, name: r.name, type: r.kind }, km, pair: `${r.code}-${r.a}-${r.b}`,
+      freq: lowcost ? (tA + tB <= 2 ? 2 : 1) : remote ? 2 : atHub ? Math.max(1, 5 - tA - tB) : 1,
+      // Low-cost routes between smaller places run a few days a week, not daily.
+      dayP: lowcost ? [1, 1, 1, 0.85, 0.6, 0.45, 0.3][tA + tB] : atHub ? 1 : 0.6,
+      season: r.seasonal ? (region.winterResorts.includes(r.a) || region.winterResorts.includes(r.b) ? 'winter' : 'summer') : null,
+      durMin: round5(35 + (km / 800) * 60),
+      fare: airFare(km, lowcost),
+    };
+    out.push({ ...base, from: r.a, to: r.b }, { ...base, from: r.b, to: r.a });
+  }
+  return out;
+}
+
+// Seasonal services: summer is April to October, winter is November to April.
+export const inSeason = (service, month) => !service.season
+  || (service.season === 'summer' ? month >= 4 && month <= 10 : month >= 11 || month <= 4);
+
 function inScope({ rail: scope = 'international', domestic = [] }, A, B, majorOnly) {
   if (A.country === B.country) return scope === A.country || domestic.includes(A.country);
   return scope === 'international' && (!majorOnly || (A.tier <= 2 && B.tier <= 2));
@@ -25,7 +68,15 @@ function inScope({ rail: scope = 'international', domestic = [] }, A, B, majorOn
 
 const PROVIDERS = {
   air(region, cities) {
+    if (region.airRoutes) return realAir(region, cities);
     const out = [], seen = new Set();
+    // Every city keeps a link to its nearest major hub, so thinning the network
+    // never cuts a place off: it only means more journeys need a connection.
+    const majors = region.carriers.filter((k) => k.type === 'network')
+      .flatMap((k) => Object.entries(k.hubs).filter(([, reach]) => reach === 1).map(([id]) => id));
+    const anchor = new Map(region.cities.map((c) => [c.id,
+      majors.filter((h) => h !== c.id && distKm(cities.get(h), c) >= 220)
+        .sort((a, b) => distKm(cities.get(a), c) - distKm(cities.get(b), c))[0]]));
     for (const carrier of region.carriers) {
       for (const [hubId, reach] of Object.entries(carrier.hubs)) {
         const hub = cities.get(hubId);
@@ -39,8 +90,16 @@ const PROVIDERS = {
           const km = distKm(hub, c);
           if (km < 220) continue;                       // too short to fly
           const network = carrier.type === 'network';
-          const p = remote ? 1 : network ? (c.tier === 1 ? Math.min(1, reach * 2) : c.tier === 2 ? reach : reach * 0.8)
-                            : reach * (c.tier === 1 ? 1.3 : 1);
+          // How likely the route exists. Big hubs reach most large cities but only some
+          // regional ones; low-cost carriers concentrate on big cities from big bases.
+          // Nearer places are favoured: about twice as likely at 600 km as at 1,200 km,
+          // and half as likely again by 2,400 km. A major hub's links to large cities are fixed.
+          // A network carrier always serves its own neighbourhood (within 700 km of the hub).
+          const near = Math.min(2.5, Math.max(0.3, (1100 / km) ** 1.3));
+          const fixed = remote || (network && (km <= 700 || anchor.get(c.id) === hubId || (reach === 1 && c.tier <= 2)));
+          const p = fixed ? 1
+            : network ? reach * [0, 1.3, 0.7, 0.28][c.tier] * near
+            : reach * [0, 1.2, 0.55, 0.22][c.tier] * [0, 1, 0.7, 0.35][hub.tier] * near;
           if (rand(`route|${carrier.code}|${hubId}|${c.id}`) >= p) continue;
           seen.add(pair);
           const freq = remote ? 2 : network
@@ -161,6 +220,7 @@ export function createWorld(region, modes = ['air'], opts = {}) {
     const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
     const legs = [];
     for (const s of services.get(cityId)) {
+      if (!inSeason(s, m)) continue;
       if (s.dayP < 1 && rand(`day|${s.pair}|${dow}`) >= s.dayP) continue;
       const number = 100 + (hash(`no|${s.pair}`) % 880) * 10 + (s.from < s.to ? 0 : 1);
       for (const [i, minutes] of slots(s, m, dow).entries()) {

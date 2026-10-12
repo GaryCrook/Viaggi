@@ -1,3 +1,5 @@
+import { AIR_ROUTES, AIR_ROUTES_DATE } from './europe-routes.js';
+
 // Region pack: Europe.
 // A region pack is plain data: cities, carriers (air) and corridors (rail).
 // Adding a new region or transport mode means adding a pack like this one;
@@ -144,6 +146,33 @@ export const CARRIERS = [
   lcc('VY', 'Vueling', 0.4, ['BCN', 'PMI', 'AGP']),
   lcc('DY', 'Norwegian', 0.3, ['OSL', 'CPH', 'STO']),
 ];
+
+// Real airlines, for the real route list in europe-routes.js.
+// name as it appears in the source -> [code, kind, name shown in the game]
+// Regional subsidiaries are folded into their parent. Airlines not listed here
+// are treated as small low-cost carriers; long-haul airlines passing through are dropped.
+export const AIRLINES = {
+  'Ryanair': ['FR', 'lowcost'], 'easyJet': ['U2', 'lowcost'], 'EasyJet': ['U2', 'lowcost', 'easyJet'], 'Wizz Air': ['W6', 'lowcost'],
+  'Norwegian Air Shuttle': ['DY', 'lowcost', 'Norwegian'], 'Jet2.com': ['LS', 'lowcost'], 'Vueling': ['VY', 'lowcost'],
+  'Transavia': ['HV', 'lowcost'], 'Pegasus Airlines': ['PC', 'lowcost'], 'Eurowings': ['EW', 'lowcost'], 'AJet': ['VF', 'lowcost'],
+  'TUI Airways': ['BY', 'lowcost', 'TUI'], 'TUI fly Belgium': ['BY', 'lowcost', 'TUI'], 'TUI fly Netherlands': ['BY', 'lowcost', 'TUI'],
+  'TUI fly Deutschland': ['BY', 'lowcost', 'TUI'], 'Condor': ['DE', 'lowcost'], 'Smartwings': ['QS', 'lowcost'], 'Volotea': ['V7', 'lowcost'],
+  'Animawings': ['A2', 'lowcost'], 'FlyOne': ['5F', 'lowcost'], 'HiSky': ['H4', 'lowcost'], 'Edelweiss Air': ['WK', 'lowcost'],
+  'Discover Airlines': ['4Y', 'lowcost'], 'Iberia Express': ['I2', 'lowcost'],
+  'British Airways': ['BA', 'network'], 'Lufthansa': ['LH', 'network'], 'Lufthansa City Airlines': ['LH', 'network', 'Lufthansa'],
+  'Air Dolomiti': ['EN', 'network'], 'Air France': ['AF', 'network'], 'KLM': ['KL', 'network'], 'Turkish Airlines': ['TK', 'network'],
+  'Iberia': ['IB', 'network'], 'Air Europa': ['UX', 'network'], 'Swiss International Air Lines': ['LX', 'network', 'SWISS'],
+  'Austrian Airlines': ['OS', 'network', 'Austrian'], 'ITA Airways': ['AZ', 'network'], 'Scandinavian Airlines': ['SK', 'network', 'SAS'],
+  'SAS': ['SK', 'network'], 'TAP Air Portugal': ['TP', 'network'], 'Azores Airlines': ['S4', 'network'], 'Brussels Airlines': ['SN', 'network'],
+  'LOT Polish Airlines': ['LO', 'network', 'LOT Polish'], 'Finnair': ['AY', 'network'], 'Aegean Airlines': ['A3', 'network', 'Aegean'],
+  'Sky Express': ['GQ', 'network'], 'Aer Lingus': ['EI', 'network'], 'airBaltic': ['BT', 'network'], 'AirBaltic': ['BT', 'network', 'airBaltic'],
+  'Air Baltic': ['BT', 'network', 'airBaltic'], 'Air Serbia': ['JU', 'network'], 'TAROM': ['RO', 'network'], 'Luxair': ['LG', 'network'],
+  'Croatia Airlines': ['OU', 'network'], 'KM Malta Airlines': ['KM', 'network'], 'Icelandair': ['FI', 'network'], 'Bulgaria Air': ['FB', 'network'],
+  'Widerøe': ['WF', 'network'],
+};
+export const AIRLINES_DROPPED = ['Ethiopian Airlines', 'Air China', 'Gulf Air', 'Singapore Airlines', 'Sichuan Airlines', 'Travelcoup', 'Twin Jet'];
+// Places whose seasonal flights run in winter (snow and northern lights); everywhere else, seasonal means summer.
+export const WINTER_RESORTS = ['INN', 'KRN', 'TOS', 'AEY'];
 
 // Rail expansion: principal high-speed and intercity corridors. A rail game uses
 // either the cross-border trains between major cities or one country's network.
@@ -323,4 +352,5 @@ export const FERRIES = [
   ['ROM', 'Civitavecchia', 'train', 60, 'PMO', 'Port of Palermo', 'taxi', 10, 840, 3, 2, 'GNV', 'GNV'],
 ];
 
-export const EUROPE = { id: 'europe', name: 'Europe', currency: '£', cities: CITIES, carriers: CARRIERS, rail: RAIL, ferries: FERRIES, countryNames: COUNTRY_NAMES };
+export const EUROPE = { id: 'europe', name: 'Europe', currency: '£', cities: CITIES, carriers: CARRIERS, rail: RAIL, ferries: FERRIES,
+  airRoutes: AIR_ROUTES, airRoutesDate: AIR_ROUTES_DATE, airlines: AIRLINES, airlinesDropped: AIRLINES_DROPPED, winterResorts: WINTER_RESORTS, countryNames: COUNTRY_NAMES };

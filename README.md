@@ -29,11 +29,17 @@ Add `?seed=anything` to replay the same disruption, `?debug` to expose `window.t
 
 ## Data
 
-Timetables are modelled, not downloaded. Each airline flies from its real hubs
-or bases; frequency follows city size; flight numbers and times are generated
-deterministically, so every player sees the same board. To use a real schedule
-snapshot (for example AeroDataBox), replace the `air` provider in `world.js`
-with one that reads the snapshot – the rest of the game is unchanged.
+Flight routes are real: `src/data/europe-routes.js` records which airline flies between which
+of the game's cities and whether the route is seasonal. It is generated from Wikipedia's airport
+pages (text licensed CC BY-SA 4.0, as is that file):
+
+```bash
+node tools/fetch-routes.mjs    # re-reads about 65 airport pages, slowly, and rewrites the file
+```
+
+How often each route runs is estimated, and flight times, flight numbers and all fares are
+generated, deterministically, so every player sees the same board. Rail and ferry routes are
+hand-entered estimates.
 
 ## Air and rail are separate games
 

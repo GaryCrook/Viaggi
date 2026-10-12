@@ -4,7 +4,7 @@
 import { EUROPE } from './data/europe.js';
 import { CHALLENGES, TRAINING, dailyChallenge } from './data/challenges.js';
 import { POSTCARDS } from './data/postcards.js';
-import { createWorld, MODES } from './engine/world.js';
+import { createWorld, MODES, inSeason } from './engine/world.js';
 import * as G from './engine/game.js';
 import { legStatus } from './engine/events.js';
 import { sfx } from './sfx.js';
@@ -58,6 +58,12 @@ function initMap() {
       paint: { 'line-color': '#1f7a5c', 'line-width': 1.6, 'line-opacity': 0.45 } });
     map.addLayer({ id: 'network-sea', type: 'line', source: 'network', filter: ['==', ['get', 'mode'], 'ferry'],
       paint: { 'line-color': '#1f5fa8', 'line-width': 1.6, 'line-opacity': 0.5, 'line-dasharray': [1, 2] } });
+    // Route map: the spokes from whichever city the player has tapped.
+    map.addSource('spokes', { type: 'geojson', data: empty });
+    map.addLayer({ id: 'spokes', type: 'line', source: 'spokes', layout: { 'line-cap': 'round' },
+      paint: { 'line-width': 1.8, 'line-opacity': 0.75,
+        'line-color': ['match', ['get', 'mode'], 'rail', '#1f7a5c', 'ferry', '#1f5fa8', '#f28c28'] } });
+    map.on('click', () => { if (ui.routes) { ui.routes = null; render(); fitRoutes(); } });
     map.addSource('path', { type: 'geojson', data: empty });
     map.addSource('preview', { type: 'geojson', data: empty });
     map.addLayer({ id: 'path-air', type: 'line', source: 'path', filter: ['==', ['get', 'mode'], 'air'],
@@ -74,7 +80,7 @@ function initMap() {
   for (const c of EUROPE.cities) {
     const el = document.createElement('div');
     el.className = 'pin';
-    el.innerHTML = `<i>${c.emoji}</i><span>${c.name}</span>`;
+    el.innerHTML = `<i>${c.emoji}</i><span>${c.name}</span><b class="tag"></b>`;
     el.addEventListener('click', (e) => { e.stopPropagation(); pinClick(c.id); });
     pins.set(c.id, { el, marker: new maplibregl.Marker({ element: el }).setLngLat([c.lon, c.lat]).addTo(map) });
   }
@@ -106,12 +112,34 @@ function showNetwork() {
   map.getSource('network').setData({ type: 'FeatureCollection', features });
 }
 
+// The route map belongs to the Routes tab. It shows the city you are in, or
+// another city if you tap one while the tab is open.
+const routeCity = () => (g && !g.over && ui.filter === 'routes' && !ui.peek ? ui.routes || g.city : null);
+
+function fitRoutes() {
+  const id = routeCity();
+  if (!id) return;
+  const c = world.cities.get(id), b = new maplibregl.LngLatBounds([c.lon, c.lat], [c.lon, c.lat]);
+  for (const to of routeMap(id).keys()) { const d = world.cities.get(to); b.extend([d.lon, d.lat]); }
+  map.fitBounds(b, { padding: { top: 150, bottom: 60, left: 60, right: 80 }, maxZoom: 6, duration: 700 });
+}
+
+// Everywhere you can travel to direct from a city, with the mode used: Map of cityId -> mode.
+function routeMap(id) {
+  const out = new Map();
+  if (!id || !world) return out;
+  const month = local(world.cities.get(id).tz, g.clock).m;
+  for (const s of world.services.get(id)) if (inSeason(s, month) && (!out.has(s.to) || s.mode === 'air')) out.set(s.to, s.mode);
+  return out;
+}
+
 const line = (a, b, mode) => ({ type: 'Feature', properties: { mode }, geometry: { type: 'LineString', coordinates: arc(a, b) } });
 
 function renderMap() {
   if (!g) return;
   const reach = new Set(G.board(g).filter((r) => r.bookable).map((r) => r.leg.to));
   const wanted = G.stampCities(g);
+  const hub = routeCity(), spokes = routeMap(hub);
   for (const [id, { el }] of pins) {
     const cls = ['pin'];
     if (!world.services.get(id).length) cls.push('off');
@@ -122,12 +150,20 @@ function renderMap() {
     if (id === g.city) cls.push('here');
     if (reach.has(id)) cls.push('reach');
     if (id === ui.open) cls.push('open');
+    if (id === hub) cls.push('hub');
+    else if (spokes.has(id)) cls.push('spoke');
+    else if (hub) cls.push('faded');
     el.className = cls.join(' ');
+    // Airport codes keep a busy route map readable; cities on your list keep their names.
+    const named = byRail() || wanted.includes(id) || id === g.challenge.home || id === g.city;
+    el.lastChild.textContent = named ? world.cities.get(id).name : world.cities.get(id).apt;
     el.firstChild.textContent = id === g.challenge.home ? '🏠' : world.cities.get(id).emoji;
   }
   if (!map.getSource('path')) return;
   const city = (id) => world.cities.get(id);
   shade(G.here(g).tz, g.clock);
+  map.getSource('spokes').setData({ type: 'FeatureCollection',
+    features: [...spokes].map(([to, mode]) => line(city(hub), city(to), mode)) });
   map.getSource('path').setData({ type: 'FeatureCollection', features: g.path.map((p) => line(city(p.from), city(p.to), p.mode)) });
   map.getSource('preview').setData({ type: 'FeatureCollection',
     features: ui.open && world.cities.has(ui.open) && ui.open !== g.city && !ui.peek ? [line(G.here(g), city(ui.open), 'preview')] : [] });
@@ -178,39 +214,46 @@ function travel(from, to, row) {
   });
 }
 
-// Tapping a city flips between two views: today's departures from here to
-// that city, and the departures from that city. Each further tap flips back.
+// One line above the map saying whose routes are showing, kept clear of the map itself.
+function renderCaption() {
+  const el = $('caption'), id = routeCity();
+  if (!id || ui.modal) { el.innerHTML = ''; return; }
+  const c = world.cities.get(id), here = G.here(g), n = routeMap(id).size;
+  const direct = id === g.city ? 0 : G.board(g).filter((r) => r.leg.to === id).length;
+  const local = id === g.city ? 'Tap any city to see its routes.'
+    : `${direct ? `${here.name} to ${c.name}: ${direct} today.` : `Nothing direct from ${here.name} today.`} Tap ${c.name} again for ${here.name}.`;
+  el.innerHTML = `<div><b>${c.emoji} From ${c.name}</b>
+    <span>${n} place${n === 1 ? '' : 's'} direct ${byRail() ? 'by train or ferry' : 'by air'} · ${local}</span>
+    <button data-act="noroutes" aria-label="Close route map">✕</button></div>`;
+}
+
+// Tapping a city. With the Routes tab open it moves the route map to that city
+// (tap again to return to your own). Otherwise it opens today's departures to
+// that city on the board and offers its route map.
 function pinClick(id) {
   if (!g || g.over || ui.busy || ui.modal) return;
   const c = world.cities.get(id), here = G.here(g);
   popup?.remove();
-  if (id !== g.city && ui.pinned === id && ui.peek !== id && G.canPeek(g, id)) {
-    actions.peek(id);                       // second tap: departures from that city
+  if (ui.filter === 'routes') {
+    ui.routes = ui.routes === id || id === g.city ? null : id;
     render();
+    fitRoutes();
     return;
   }
-  const back = ui.peek === id;              // third tap: back to departures from here
-  ui.pinned = id;
-  ui.peek = null;
   const onList = G.stampCities(g).includes(id);
-  const cost = c.idx >= 1.3 ? 'Expensive' : c.idx >= 0.9 ? 'Mid-priced' : 'Cheap';
   const status = id === g.city ? 'You are here.'
     : onList ? (g.collected.includes(id) ? 'Passport stamped.' : 'On your list: stamp needed.')
     : id === g.challenge.home ? 'Home. Finish here.' : 'Not on your list.';
   const direct = id === g.city ? 0 : G.board(g).filter((r) => r.leg.to === id).length;
   const board = id === g.city ? '' : direct
     ? `<p><b>${here.name} to ${c.name}:</b> ${direct} departure${direct > 1 ? 's' : ''} today, shown on the board.</p>`
-    : `<p><b>${here.name} to ${c.name}:</b> nothing direct today. Try the Routes tab.</p>`;
-  const free = g.peeked.includes(id);
-  const tip = id === g.city ? '' : G.canPeek(g, id)
-    ? `<small class="tip">Tap ${c.name} again for departures from ${c.name}${free ? '' : ` · ${g.lookups} look-up${g.lookups > 1 ? 's' : ''} left today`}</small>`
-    : '<small class="tip">No look-ups left today</small>';
-  popup = new maplibregl.Popup({ offset: 16, closeButton: false, maxWidth: '270px' })
+    : `<p><b>${here.name} to ${c.name}:</b> nothing direct today.</p>`;
+  popup = new maplibregl.Popup({ offset: 16, closeButton: false, maxWidth: '260px' })
     .setLngLat([c.lon, c.lat])
-    .setHTML(`<h3>${c.emoji} ${c.name}</h3><p>${status}<br>${cost} city · ${byRail() ? 'station in the centre' : `${c.xfer} min from ${c.apt} to the centre`}</p>${board}${tip}`)
+    .setHTML(`<h3>${c.emoji} ${c.name}</h3><p>${status}</p>${board}
+      <button class="btn" data-act="routesfrom" data-id="${id}">Route map from ${c.name}</button>`)
     .addTo(map);
   if (id !== g.city) { ui.open = id; ui.filter = 'all'; }
-  if (back) ui.flip = true;
   render();
   scrollToOpen();
 }
@@ -226,26 +269,85 @@ function scrollToOpen() {
 
 // ------------------------------------------------------------------ clock
 
-const TICKS = Array.from({ length: 12 }, (_, i) =>
-  `<line x1="50" y1="${i % 3 ? 9 : 7}" x2="50" y2="${i % 3 ? 13 : 16}" transform="rotate(${i * 30} 50 50)"/>`).join('');
+// Four clock faces to choose from (Menu > Clock style). Each is an SVG on a
+// 100 x 100 grid whose `.hour` and `.minute` parts are turned to the time.
+const ring = (n, draw) => Array.from({ length: n }, (_, i) => draw(i)).join('');
+const ROMAN = ['XII', 'I', 'II', 'III', 'IIII', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
+const numeral = (label, i, r, size) => {
+  const a = (i * 30 * Math.PI) / 180;
+  return `<text x="${(50 + r * Math.sin(a)).toFixed(1)}" y="${(50 - r * Math.cos(a) + size * 0.36).toFixed(1)}" text-anchor="middle" font-size="${size}">${label}</text>`;
+};
 
-const clockHTML = () => `<div class="clock" id="clock"><svg viewBox="0 0 100 100" role="img">
-  <circle class="face" cx="50" cy="50" r="47"/><g class="ticks">${TICKS}</g>
-  <line class="hour" x1="50" y1="54" x2="50" y2="27"/><line class="minute" x1="50" y1="56" x2="50" y2="13"/>
-  <circle class="hub" cx="50" cy="50" r="3.5"/></svg><b></b><small></small></div>`;
+const CLOCKS = {
+  platform: {
+    name: 'Platform classic', note: 'Roman numerals, dark case',
+    svg: `<circle class="case" cx="50" cy="50" r="49"/><circle class="bezel" cx="50" cy="50" r="44.5"/><circle class="face" cx="50" cy="50" r="42"/>
+      <g class="ticks">${ring(60, (i) => `<line x1="50" y1="9.5" x2="50" y2="${i % 5 ? 11.5 : 13.5}" stroke-width="${i % 5 ? 0.7 : 1.6}" transform="rotate(${i * 6} 50 50)"/>`)}</g>
+      <g class="numerals serif">${ring(12, (i) => numeral(ROMAN[i], i, 30.5, 9))}</g>
+      <path class="hour" d="M50 55 L47.6 50 L48.7 33 Q50 24 51.3 33 L52.4 50 Z"/>
+      <path class="minute" d="M50 57 L48.4 50 L49.2 20 Q50 12 50.8 20 L51.6 50 Z"/>
+      <circle class="hub" cx="50" cy="50" r="2.8"/>`,
+  },
+  continental: {
+    name: 'Continental station', note: 'Bold markers, baton hands',
+    svg: `<circle class="case" cx="50" cy="50" r="49"/><circle class="face" cx="50" cy="50" r="44"/>
+      <g class="ticks">${ring(60, (i) => (i % 5
+        ? `<line x1="50" y1="9" x2="50" y2="12" stroke-width="1" transform="rotate(${i * 6} 50 50)"/>`
+        : `<line x1="50" y1="9" x2="50" y2="19" stroke-width="3.6" transform="rotate(${i * 6} 50 50)"/>`))}</g>
+      <rect class="hour" x="47.2" y="24" width="5.6" height="34" rx="0.6"/>
+      <rect class="minute" x="48" y="10" width="4" height="48" rx="0.5"/>
+      <circle class="hub" cx="50" cy="50" r="2.4"/>`,
+  },
+  brass: {
+    name: 'Ticket hall brass', note: 'Brass rim, cream face',
+    svg: `<circle class="case" cx="50" cy="50" r="49"/><circle class="bezel" cx="50" cy="50" r="45"/><circle class="face" cx="50" cy="50" r="41"/>
+      <g class="ticks">${ring(60, (i) => `<circle cx="50" cy="12" r="${i % 5 ? 0.5 : 1.2}" transform="rotate(${i * 6} 50 50)"/>`)}</g>
+      <g class="numerals serif">${ring(12, (i) => numeral(i || 12, i, 30, 9.5))}</g>
+      <text class="maker" x="50" y="66" text-anchor="middle" font-size="4.2" letter-spacing="1.2">VIAGGI</text>
+      <path class="hour" d="M50 55 L48 50 L49 30 L50 25 L51 30 L52 50 Z"/>
+      <path class="minute" d="M50 57 L48.8 50 L49.4 17 L50 12 L50.6 17 L51.2 50 Z"/>
+      <circle class="hub" cx="50" cy="50" r="2.6"/>`,
+  },
+  modern: {
+    name: 'Modern', note: 'Plain face, coloured minute hand',
+    svg: `<circle class="face" cx="50" cy="50" r="47"/>
+      <g class="ticks">${ring(12, (i) => `<line x1="50" y1="${i % 3 ? 9 : 7}" x2="50" y2="${i % 3 ? 13 : 16}" transform="rotate(${i * 30} 50 50)"/>`)}</g>
+      <line class="hour" x1="50" y1="54" x2="50" y2="27"/><line class="minute" x1="50" y1="56" x2="50" y2="13"/>
+      <circle class="hub" cx="50" cy="50" r="3.5"/>`,
+  },
+};
+const clockStyle = () => (CLOCKS[store.get('tg-clock')] ? store.get('tg-clock') : 'platform');
+const dial = (style) => `<svg class="dial c-${style}" viewBox="0 0 100 100" role="img">${CLOCKS[style].svg}</svg>`;
+const clockHTML = () => `<div class="clock" id="clock">${dial(clockStyle())}<b></b><small></small></div>`;
 
-// Point the hands at a local time. The face turns dark at night, since an
-// analogue dial cannot tell 8 in the morning from 8 in the evening.
+// Turn the hands of one dial to a local time.
+function setHands(svg, p) {
+  svg.querySelector('.hour').setAttribute('transform', `rotate(${(p.minutes / 2) % 360} 50 50)`);
+  svg.querySelector('.minute').setAttribute('transform', `rotate(${p.min * 6} 50 50)`);
+}
+
+// Point the header clock at a local time. At night the face is lit from within,
+// since an analogue dial cannot tell 8 in the morning from 8 in the evening.
 function setClock(tz, ms) {
   const el = $('clock');
   if (!el) return;
   const p = local(tz, ms);
-  el.querySelector('.hour').setAttribute('transform', `rotate(${(p.minutes / 2) % 360} 50 50)`);
-  el.querySelector('.minute').setAttribute('transform', `rotate(${p.min * 6} 50 50)`);
+  setHands(el.querySelector('svg'), p);
   el.classList.toggle('night', p.minutes >= 1320 || p.minutes < 360);
   el.querySelector('svg').setAttribute('aria-label', `${fmtTime(tz, ms)} local time`);
   el.querySelector('b').textContent = fmtTime(tz, ms);
   el.querySelector('small').textContent = p.h < 12 ? 'morning' : p.h < 18 ? 'afternoon' : p.h < 22 ? 'evening' : 'night';
+}
+
+function clocksSheet() {
+  const p = local(G.here(g).tz, g.clock), current = clockStyle();
+  const cards = Object.entries(CLOCKS).map(([id, c]) => `
+    <button class="card clockcard ${id === current ? 'on' : ''}" data-act="clockstyle" data-id="${id}">
+      ${dial(id)}<b>${c.name}</b><small>${c.note}</small></button>`).join('');
+  setTimeout(() => document.querySelectorAll('.clockcard svg').forEach((svg) => setHands(svg, p)));
+  return `<h2>Clock style</h2><p>Each shows the time where you are now. Tap one to use it.</p>
+    <div class="clockgrid">${cards}</div>
+    <div class="row-btns"><button class="btn" data-act="close">Done</button></div>`;
 }
 
 // ------------------------------------------------------------------ passport
@@ -386,10 +488,11 @@ function markCoachTarget() {
 function render() {
   $('app').classList.toggle('busy', ui.busy);
   renderModal();
-  if (!g) { $('panel').innerHTML = ''; $('hud').innerHTML = ''; return; }
+  if (!g) { $('panel').innerHTML = ''; $('hud').innerHTML = ''; $('caption').innerHTML = ''; return; }
   renderHud();
   renderPanel();
   renderMap();
+  renderCaption();
   if (ui.flip) { ui.flip = false; flipBoard(); }
   markCoachTarget();
 }
@@ -597,7 +700,7 @@ function flipBoard() {
 
 // ------------------------------------------------------------------ modals
 
-const SHEETS = { missed: missedSheet, times: timesSheet, splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
+const SHEETS = { clocks: clocksSheet, missed: missedSheet, times: timesSheet, splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
 
 function renderModal() {
   const el = $('modal');
@@ -627,7 +730,8 @@ function splashSheet() {
     <p class="pitch">A race against the clock and your wallet. You are handed a list of cities, a deadline and a budget. Get your passport stamped in every city and make it home in time.</p>
     <h3 class="how">How to play</h3>
     <ol class="steps">${steps}</ol>
-    <p class="modes"><b>✈ By air</b> covers more than 50 cities by plane. <b>🚆 Rail and sail</b> is trains, sleepers and ferries only, across borders or within one country.</p>
+    <p class="modes"><b>✈ By air</b> covers more than 50 cities by plane, on real airline routes. <b>🚆 Rail and sail</b> is trains, sleepers and ferries only, across borders or within one country.</p>
+    <p class="credit">Flight routes: which airline flies where is taken from Wikipedia’s airport pages (${EUROPE.airRoutesDate}), licensed CC BY-SA 4.0. Flight times, numbers, frequencies and all fares are generated for the game.</p>
     <div class="startbar">${buttons}</div>`;
 }
 
@@ -655,6 +759,7 @@ function menuSheet() {
       <button class="btn ghost" data-act="passport">Passport</button>
       <button class="btn ghost" data-act="log">Journey log</button>
       <button class="btn ghost" data-act="help">How to play</button>
+      <button class="btn ghost" data-act="clocks">Clock style</button>
       <button class="btn ghost" data-act="sound">Travel sounds: ${sfx.on ? 'on' : 'off'}</button>
       <button class="btn ghost" data-act="quit">End this journey and see my score</button>
       <button class="btn ghost" data-act="again">Abandon and return to the start screen</button>
@@ -924,7 +1029,7 @@ function afterMove(notes = [], modal = null) {
   const all = G.news(g);
   if (!g.over) all.slice(ui.seenNews).forEach((e) => toast(e.text, 'news'));
   ui.seenNews = all.length;
-  ui.open = null; ui.peek = null; ui.pinned = null; ui.busy = false; ui.flip = true;
+  ui.open = null; ui.peek = null; ui.routes = null; ui.busy = false; ui.flip = true;
   popup?.remove();
   // Arriving late with a stamp to collect: let the player get it before the hotel takes over.
   const stampFirst = !G.visitPlan(g).why;
@@ -934,7 +1039,7 @@ function afterMove(notes = [], modal = null) {
     if (!old || s.points > old.points) store.set(k, { points: s.points, stars: s.stars });
   }
   render();
-  if (!g.over) frame();
+  if (!g.over) { if (routeCity()) fitRoutes(); else frame(); }
 }
 
 function start() {
@@ -973,6 +1078,7 @@ async function go(legId, flex = false, credit = 0) {
   const row = G.board(g).find((r) => r.leg.id === legId);
   if (!row || !(row.bookable || row.tight) || ui.busy) return;
   popup?.remove();
+  ui.routes = null;
   sfx.unlock();
   ui.modal = null;
   if (!G.runSucceeds(g, row)) {
@@ -1000,8 +1106,12 @@ const actions = {
   depart,
   again: () => { g = null; ui.modal = 'start'; popup?.remove(); $('toasts').innerHTML = ''; },
   open: (id) => { ui.open = ui.open === id ? null : id; },
-  filter: (id) => { ui.filter = id; ui.open = null; ui.flip = true; if (id === 'routes' && ui.coach) ui.coach.routes = true; },
+  filter: (id) => { ui.filter = id; ui.open = null; ui.routes = null; ui.flip = true; popup?.remove(); if (id === 'routes' && ui.coach) ui.coach.routes = true; },
+  routesfrom: (id) => { popup?.remove(); ui.filter = 'routes'; ui.open = null; ui.flip = true; ui.routes = id === g.city ? null : id; },
   train: startTraining,
+  clocks: () => { ui.modal = 'clocks'; },
+  clockstyle: (id) => { store.set('tg-clock', id); },
+  noroutes: () => { ui.routes = null; ui.filter = 'all'; ui.flip = true; },
   sound: () => sfx.toggle(),
   mode: (id) => { ui.mode = id; },
   times: () => { ui.modal = 'times'; },
@@ -1045,6 +1155,7 @@ document.addEventListener('click', async (e) => {
   const act = el.dataset.act;
   await actions[act](el.dataset.id, el);
   if (!SELF_RENDERING.includes(act)) render();
+  if (['filter', 'routesfrom', 'noroutes'].includes(act) && g && !g.over) { if (routeCity()) fitRoutes(); else frame(); }
   if (act === 'open') scrollToOpen();
 });
 
