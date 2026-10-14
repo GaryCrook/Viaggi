@@ -64,3 +64,14 @@ Cities marked `railOnly` in the region pack exist on the rail map but have no fl
 
 - **New region:** add a pack like `europe.js` and pass it to `createWorld`.
 - **New transport mode:** add a provider to `PROVIDERS` in `world.js` and an entry in `MODES`.
+
+## iOS
+
+The native app is being built in SwiftUI. Its game rules live in `ios/ViaggiKit`, a Swift package
+that reads the same data as the web prototype and is tested against it:
+
+```bash
+node tools/export-data.mjs     # web data -> data/*.json and the Swift package
+node tools/make-fixtures.mjs   # reference results from the web engine
+cd ios/ViaggiKit && swift test # the Swift engine must match them
+```

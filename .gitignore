@@ -1,3 +1,8 @@
 .DS_Store
 node_modules/
 tools/.wiki-cache/
+ios/ViaggiKit/.build/
+ios/ViaggiKit/.swiftpm/
+*.xcuserstate
+xcuserdata/
+.build/

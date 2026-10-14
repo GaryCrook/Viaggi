@@ -118,6 +118,33 @@ Still open:
 - France and Germany networks added 11 October 2026 at Gary's request. Britain is the obvious next one. Should Italy be opened inside international journeys the way Spain is?
 - No UK to Scandinavia passenger ferry exists (checked 11 October 2026: Harwich–Esbjerg closed 2014, Newcastle–Bergen 2008, Newcastle–Gothenburg 2006; a Newcastle–Bergen revival is discussed but unconfirmed). Not in the game.
 
+## iOS app and paid packs
+
+### Decisions (Gary, 14 October 2026)
+- **Native SwiftUI**, universal app for iPad first and iPhone. The web prototype stays as the design lab.
+- **Free version:** training, Weekend Dash and the **daily challenge** (moved to free to bring players back daily).
+- **Paid "Europe" unlock:** the other European flight journeys (and the no-time-limit mode).
+- **Add-ons:** **Rail & Ferry Europe next**, then **North America flights** soon after; later Asia & Australasia, South America, Africa (consider a Middle East hub pack, and "Round the World" journeys for owners of several regions).
+- **Pricing:** to be discussed later. No subscription for now.
+- **Android:** wanted later if the iOS version succeeds. The shared JSON data and the fixture tests are designed so a Kotlin port can be checked the same way.
+- **iPhone foldable ("iPhone Duo"):** will need its own design; wait until the device is available. Build layouts on size classes so most of it adapts.
+
+### Phase 1 done (14 October 2026): the game rules in Swift
+- `data/*.json` is the shared data for iOS and Android, generated from the web prototype's modules by `node tools/export-data.mjs` (also copies them into the Swift package). The JS modules remain the source of truth for now: edit them, then re-export.
+- `ios/ViaggiKit` is a Swift package with no user interface: `Util`, `Models`, `World`, `Events`, `Tickets`, `Game`, `Planner` (including route options and the daily challenge), each matching its JS file.
+- `node tools/make-fixtures.mjs` records reference results from the JS engine; `cd ios/ViaggiKit && swift test` checks the Swift engine against them. All pass: the 3,060 sample departures, disruption, bonus tickets, 27 whole bot-played games move for move, calibration, route options and daily challenges are identical.
+- Porting notes: JavaScript's Math.round, stable sort and Map insertion order are reproduced (`jsRound`, `stableSorted`, `OrderedMap`); storm and closure times are rounded up to whole milliseconds; untimed games get no time bonus in the score (the JS gives Infinity).
+- The invented flight network (`CARRIERS` model) was not ported; Swift uses the real route list only.
+
+### Next steps (Phase 2 onwards)
+1. Create the Xcode app project (`ios/Viaggi`), universal, using the ViaggiKit package.
+2. Screens: map with MapKit (pins, route map, travel animation), departure board, passport and stamps, clock faces, modals (night, missed, left without stamp, out of money, end), splash and training coach. iPad: map and board side by side; iPhone: stacked.
+3. StoreKit 2: free tier, "Europe" unlock, "Rail & Ferry Europe" pack, Family Sharing, restore purchases.
+4. Game Center leaderboards (daily challenge, no-time-limit times) and iCloud sync of progress.
+5. TestFlight, App Store listing, privacy details.
+6. Then North America flights (Wikipedia importer can be reused; needs cities, airlines table, journeys, stamps).
+7. Before selling: name and trademark search, airline-name advice, keep the route data CC BY-SA and credited, Apple paid-apps agreement.
+
 ## Ideas for later
 
 - **USA by air, with a roads expansion** (Gary, 11 October 2026). A new region pack for flights, and a road mode (car or coach) as its surface counterpart, the way rail and sail is for Europe. Not started.
