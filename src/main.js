@@ -65,7 +65,7 @@ function initMap() {
     map.addLayer({ id: 'spokes', type: 'line', source: 'spokes', layout: { 'line-cap': 'round' },
       paint: { 'line-width': 1.8, 'line-opacity': 0.75,
         'line-color': ['match', ['get', 'mode'], 'rail', '#1f7a5c', 'ferry', '#1f5fa8', '#f28c28'] } });
-    map.on('click', () => { if (ui.routes) { ui.routes = null; render(); fitRoutes(); } });
+    map.on('click', () => { if (routeCity()) { ui.routes = 'none'; render(); frame(); } });
     map.addSource('path', { type: 'geojson', data: empty });
     map.addSource('preview', { type: 'geojson', data: empty });
     map.addLayer({ id: 'path-air', type: 'line', source: 'path', filter: ['==', ['get', 'mode'], 'air'],
@@ -116,7 +116,8 @@ function showNetwork() {
 
 // The route map belongs to the Routes tab. It shows the city you are in, or
 // another city if you tap one while the tab is open.
-const routeCity = () => (g && !g.over && ui.filter === 'routes' && !ui.peek ? ui.routes || g.city : null);
+// `ui.routes` is a city id, null for your own city, or 'none' once the map has been cleared.
+const routeCity = () => (g && !g.over && ui.filter === 'routes' && !ui.peek && ui.routes !== 'none' ? ui.routes || g.city : null);
 
 function fitRoutes() {
   const id = routeCity();
@@ -195,6 +196,8 @@ function travel(from, to, row) {
     let finished = false;
     const end = () => { if (finished) return; finished = true; m.remove(); resolve(); };
     const step = (now) => {
+      // The fallback timer may already have finished the trip, or the player left the game.
+      if (finished || !g) return;
       const ms = Math.min(dur, now - t0);
       let clock, tz, e = 0;
       if (ms < wait) { clock = g.clock + (row.dep - g.clock) * (ms / wait); tz = from.tz; }
@@ -222,8 +225,8 @@ function renderCaption() {
   if (!id || ui.modal) { el.innerHTML = ''; return; }
   const c = world.cities.get(id), here = G.here(g), n = routeMap(id).size;
   const direct = id === g.city ? 0 : G.board(g).filter((r) => r.leg.to === id).length;
-  const local = id === g.city ? 'Tap any city to see its routes.'
-    : `${direct ? `${here.name} to ${c.name}: ${direct} today.` : `Nothing direct from ${here.name} today.`} Tap ${c.name} again for ${here.name}.`;
+  const local = id === g.city ? `Tap ${here.name} again to clear the map, or any city to see its routes.`
+    : `${direct ? `${here.name} to ${c.name}: ${direct} today.` : `Nothing direct from ${here.name} today.`} Tap ${c.name} again to clear the map.`;
   el.innerHTML = `<div><b>${c.emoji} From ${c.name}</b>
     <span>${n} place${n === 1 ? '' : 's'} direct ${byRail() ? 'by train or ferry' : 'by air'} · ${local}</span>
     <button data-act="noroutes" aria-label="Close route map">✕</button></div>`;
@@ -237,9 +240,10 @@ function pinClick(id) {
   const c = world.cities.get(id), here = G.here(g);
   popup?.remove();
   if (ui.filter === 'routes') {
-    ui.routes = ui.routes === id || id === g.city ? null : id;
+    // Tapping the city whose routes are showing clears the map; any other city shows its routes.
+    ui.routes = routeCity() === id ? 'none' : id === g.city ? null : id;
     render();
-    fitRoutes();
+    if (routeCity()) fitRoutes(); else frame();
     return;
   }
   const onList = G.stampCities(g).includes(id);
@@ -1328,7 +1332,7 @@ const actions = {
   train: startTraining,
   clocks: () => { ui.modal = 'clocks'; },
   clockstyle: (id) => { store.set('tg-clock', id); },
-  noroutes: () => { ui.routes = null; ui.filter = 'all'; ui.flip = true; },
+  noroutes: () => { ui.routes = 'none'; },
   sound: () => sfx.toggle(),
   mode: (id) => { ui.mode = id; },
   times: () => { ui.modal = 'times'; },
