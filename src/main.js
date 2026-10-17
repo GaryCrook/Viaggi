@@ -8,6 +8,7 @@ import { createWorld, MODES, inSeason } from './engine/world.js';
 import * as G from './engine/game.js';
 import { legStatus } from './engine/events.js';
 import { sfx } from './sfx.js';
+import { FEATS, loadJournal, saveJournal, earn, recordStamp, countries, dayKey, streak, recordDaily } from './journal.js';
 import { routeOptions } from './engine/planner.js';
 import { arc, hash, local, distKm, fmtTime, fmtDay, fmtDur, MIN } from './engine/util.js';
 
@@ -38,6 +39,7 @@ const clockPill = (t) => (g.challenge.untimed
 const ALL_CHALLENGES = [dailyChallenge(createWorld(EUROPE)), ...CHALLENGES];
 
 let world, g, map, popup;
+let journal = loadJournal();
 const pins = new Map();
 const ui = { open: null, filter: 'all', peek: null, busy: false, modal: 'splash', coach: null, mode: 'race', saved: null, challenge: ALL_CHALLENGES[0].id,
   seenNews: 0, flip: false, keep: [], stamped: null };
@@ -371,11 +373,18 @@ const ICONS = {
   ferry: 'M7 0h2v3h3v4l3 1-2 5H3L1 8l3-1V3h3zm-1 5v2h4V5zM0 15h16v1H0z',
 };
 
+const cityById = (id) => EUROPE.cities.find((c) => c.id === id);
+
 function stampHTML(id, big = false) {
   const c = world.cities.get(id), t = g.stampAt[id];
   if (!t) return `<div class="stp blank ${big ? 'big' : ''}"><i>${c.emoji}</i><small>${c.name}</small></div>`;
+  return stampSVG(c, t, g.stampVia[id] || { mode: 'air', place: c.apt }, big);
+}
+
+// One border stamp: the city, the date it was stamped and how you arrived.
+function stampSVG(c, t, via, big = false) {
+  const id = c.id;
   const p = local(c.tz, t), h = hash(`ink|${c.country}`), [letter, nation] = NATIONS[c.country] || [c.country, c.name];
-  const via = g.stampVia[id] || { mode: 'air', place: c.apt };
   const date = `${String(p.d).padStart(2, '0')}.${String(p.m).padStart(2, '0')}.${String(p.y).slice(2)}`;
   const shape = OUTSIDE_SCHENGEN[c.country] || 'rect';
   const frame = {
@@ -701,7 +710,7 @@ function flipBoard() {
 
 // ------------------------------------------------------------------ modals
 
-const SHEETS = { leaving: leavingSheet, left: leftSheet, clocks: clocksSheet, missed: missedSheet, times: timesSheet, splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
+const SHEETS = { mypassport: myPassportSheet, archive: archiveSheet, leaving: leavingSheet, left: leftSheet, clocks: clocksSheet, missed: missedSheet, times: timesSheet, splash: splashSheet, menu: menuSheet, start: startSheet, tickets: ticketSheet, night: nightSheet, stamp: stampSheet, passport: passportSheet, end: endSheet, log: logSheet };
 
 function renderModal() {
   const el = $('modal');
@@ -724,7 +733,8 @@ function splashSheet() {
   const buttons = g
     ? '<button class="btn big" data-act="close">Back to the journey</button>'
     : `<button class="btn big" data-act="train">Start with a guided training flight</button>
-       <button class="btn ghost wide" data-act="journeys">Choose a journey</button>`;
+       <button class="btn ghost wide" data-act="journeys">Choose a journey</button>
+       ${Object.keys(journal.stamps).length ? `<button class="btn ghost wide" data-act="mypassport">My passport · ${Object.keys(journal.stamps).length} stamps${streak(journal).current ? ` · 🔥 ${streak(journal).current}` : ''}</button>` : ''}`;
   return `
     <h1>Viag<span>gi</span></h1>
     <div class="tagline">The Great Race</div>
@@ -750,6 +760,85 @@ function timesSheet() {
     <div class="row-btns"><button class="btn" data-act="journeys">Back</button></div>`;
 }
 
+// ------------------------------------------------------------------ lifelong passport and streaks
+
+function streakLine() {
+  const st = streak(journal);
+  if (st.today) return `🔥 ${st.current}-day streak · done for today`;
+  if (st.current) return `🔥 ${st.current}-day streak · play today to keep it`;
+  return st.best ? `Best streak ${st.best} · start a new one today` : 'Win today’s journey to start a streak';
+}
+
+function newInPassport() {
+  const stamps = g.newStamps || [], feats = (g.newFeats || []).map((id) => FEATS.find((f) => f.id === id));
+  if (!stamps.length && !feats.length) return '';
+  const names = stamps.map((id) => cityById(id).name).join(', ');
+  return `<p class="fresh">New in your passport: ${[stamps.length ? names : '', ...feats.map((f) => `${f.icon} ${f.name}`)].filter(Boolean).join(' · ')}</p>`;
+}
+
+const flag = (cc) => String.fromCodePoint(...[...cc].map((ch) => 127397 + ch.charCodeAt(0)));
+
+function myPassportSheet() {
+  const stamped = Object.keys(journal.stamps), t = journal.totals, st = streak(journal);
+  const byCountry = new Map();
+  for (const c of EUROPE.cities) {
+    if (!byCountry.has(c.country)) byCountry.set(c.country, { all: 0, got: [] });
+    const e = byCountry.get(c.country);
+    e.all++;
+    if (journal.stamps[c.id]) e.got.push(c.id);
+  }
+  const visited = [...byCountry].filter(([, e]) => e.got.length);
+  const countryName = (cc) => (EUROPE.countryNames[cc] || cc).replace(/^the /, '').replace(/^./, (x) => x.toUpperCase());
+  const countryRows = visited.sort((a, b) => b[1].got.length / b[1].all - a[1].got.length / a[1].all || countryName(a[0]).localeCompare(countryName(b[0])))
+    .map(([cc, e]) => `<li><span>${flag(cc)} ${countryName(cc)}</span>
+      <i style="--p:${(e.got.length / e.all) * 100}%"></i><b>${e.got.length}/${e.all}</b></li>`).join('');
+  const notYet = [...byCountry].filter(([, e]) => !e.got.length).map(([cc]) => `<span title="${countryName(cc)}">${flag(cc)}</span>`).join('');
+  const feats = FEATS.map((f) => {
+    const got = journal.feats[f.id];
+    return `<div class="feat ${got ? 'on' : ''}" title="${f.hint}"><i>${f.icon}</i><b>${f.name}</b><small>${got ? `${got.count > 1 ? `${got.count} times` : 'Earned'}` : f.hint}</small></div>`;
+  }).join('');
+  // All stamps on passport pages, grouped by country, oldest first within each.
+  const all = visited.flatMap(([, e]) => e.got.sort((x, y) => journal.stamps[x].first - journal.stamps[y].first));
+  const pages = all.length ? `<h3 class="how">Pages</h3><div class="page grid">${all.map((id) => {
+    const s = journal.stamps[id];
+    return stampSVG(cityById(id), s.first, { mode: s.mode, place: s.place });
+  }).join('')}</div>` : '';
+  const tile = (label, value) => `<div><small>${label}</small><b>${value}</b></div>`;
+  return `
+    <div class="booklet"><b>PASSPORT</b><span>Viaggi · all journeys</span></div>
+    <div class="facts four">
+      ${tile('Countries', visited.length)}${tile('Cities', `${stamped.length}/${EUROPE.cities.length}`)}
+      ${tile('Distance', `${t.km.toLocaleString('en-GB')} km`)}${tile('Journeys won', `${t.wins}/${t.journeys}`)}
+      ${tile('Flights · trains · ferries', `${t.air} · ${t.rail} · ${t.ferry}`)}${tile('Nights on board', t.onBoard)}
+      ${tile('Daily streak', `🔥 ${st.current}`)}${tile('Best streak', st.best)}
+    </div>
+    <h3 class="how">Special stamps</h3>
+    <div class="feats">${feats}</div>
+    <h3 class="how">Countries</h3>
+    ${countryRows ? `<ul class="countries">${countryRows}</ul>` : ''}
+    ${notYet ? `<p class="notyet"><small>Still to visit</small>${notYet}</p>` : ''}
+    ${pages || '<p>No stamps yet. Every stamp you collect on any journey is kept here.</p>'}
+    <p class="credit">Kept on this device.</p>
+    <div class="row-btns"><button class="btn" data-act="${g && !g.over ? 'close' : 'journeys'}">${g && !g.over ? 'Back to the journey' : 'Back'}</button></div>`;
+}
+
+const ARCHIVE_DAYS = 30;
+
+function archiveSheet() {
+  const rows = Array.from({ length: ARCHIVE_DAYS }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const key = dayKey(d), r = journal.dailies[key];
+    const label = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    const result = r ? `${r.won ? '✓' : '✗'} ${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)} ${r.points} pts${r.wonOnDay ? ' 🔥' : ''}` : 'Not played';
+    return `<li><span>${label}</span><small>${result}</small><button class="btn ${r ? 'ghost' : ''}" data-act="playday" data-id="${key}">${r ? 'Replay' : 'Play'}</button></li>`;
+  }).join('');
+  return `<h2>Daily archive</h2>
+    <p>Every day has its own journey, the same for everyone. Only a win on the day itself counts towards your streak; replays are for practice and points.</p>
+    <p class="fire">${streakLine()}</p>
+    <ul class="archive">${rows}</ul>
+    <div class="row-btns"><button class="btn" data-act="journeys">Back</button></div>`;
+}
+
 function menuSheet() {
   const got = g.challenge.targets.filter((t) => g.collected.includes(t)).length;
   return `
@@ -757,7 +846,8 @@ function menuSheet() {
     <p>${got} of ${g.challenge.targets.length} stamps · ${clockPill(g.clock)[1]} ${g.challenge.untimed ? 'so far' : 'left'} · ${money(G.remaining(g))} left</p>
     <div class="menu-list">
       <button class="btn big" data-act="close">Keep playing</button>
-      <button class="btn ghost" data-act="passport">Passport</button>
+      <button class="btn ghost" data-act="passport">This journey’s stamps</button>
+      <button class="btn ghost" data-act="mypassport">My passport (all journeys)</button>
       <button class="btn ghost" data-act="log">Journey log</button>
       <button class="btn ghost" data-act="help">How to play</button>
       <button class="btn ghost" data-act="clocks">Clock style</button>
@@ -770,23 +860,25 @@ function menuSheet() {
 function startSheet() {
   const card = (ch) => {
     const cities = ch.targets.map((id) => EUROPE.cities.find((c) => c.id === id));
-    const best = ch.key && store.get(`tg-daily-${ch.key}`);
+    const best = ch.key && journal.dailies[ch.key];
     const from = ch.home === 'LON' ? '' : `From ${EUROPE.cities.find((c) => c.id === ch.home).name}: `;
     const top = bestTimes(ch)[0];
     const limits = ui.mode === 'free'
       ? `no time limit · ${money(ch.budget)}${top ? ` · best ${fmtDur(top.mins)} (${top.name})` : ''}`
       : `${ch.hours}h · ${money(ch.budget)}${best ? ` · best ${best.points}` : ''}`;
+    const fire = ch.key ? streakLine() : '';
     return `<button class="card ${ui.challenge === ch.id ? 'on' : ''}" data-act="pick" data-id="${ch.id}">
       <b>${ch.name}</b><span class="lvl">${ch.level}</span>
       <small>${ch.blurb}</small>
       <span class="meta">${ch.rail ? `${ch.rail === 'international' ? `International${ch.domestic ? ` + ${ch.domestic.map((c) => EUROPE.countryNames[c].replace('the ', '')).join(', ')}` : ''}` : `${EUROPE.countryNames[ch.rail].replace('the ', '')} only`} · ` : ''}${cities.map((c) => c.emoji).join(' ')} · ${limits}</span>
       <small>${from}${cities.map((c) => c.name).join(', ')}</small>
+      ${fire ? `<span class="fire">${fire}</span>` : ''}
     </button>`;
   };
   const pack = (id) => ALL_CHALLENGES.filter((ch) => ch.pack === id).map(card).join('');
   return `
     <h2>Choose a journey</h2>
-    <p><button class="link" data-act="help">How to play</button> · <button class="link" data-act="train">Guided training flight</button> · <button class="link" data-act="times">Best times</button></p>
+    <p><button class="link" data-act="help">How to play</button> · <button class="link" data-act="train">Guided training flight</button> · <button class="link" data-act="times">Best times</button> · <button class="link" data-act="mypassport">My passport</button> · <button class="link" data-act="archive">Daily archive</button></p>
     <div class="seg light">
       <button class="${ui.mode === 'race' ? 'on' : ''}" data-act="mode" data-id="race">⏱ Against the clock</button>
       <button class="${ui.mode === 'free' ? 'on' : ''}" data-act="mode" data-id="free">🏁 No time limit</button>
@@ -966,8 +1058,12 @@ function logSheet() {
 function shareText(s) {
   const ch = g.challenge;
   const stars = '★'.repeat(s.stars) + '☆'.repeat(3 - s.stars);
-  const route = [ch.home, ...g.path.map((p) => p.to)].map((id) => (id === ch.home ? '🏠' : world.cities.get(id).emoji)).join('');
-  return [`Viaggi · ${ch.key ? `Daily ${ch.key}` : ch.name}`,
+  // The route as a strip of stops joined by how you travelled: 🏠✈️🌷🚆🐻
+  const icon = { air: '✈️', rail: '🚆', ferry: '⛴️' };
+  const stop = (id) => (id === ch.home ? '🏠' : world.cities.get(id).emoji);
+  const route = stop(ch.home) + g.path.map((p) => icon[p.mode] + stop(p.to)).join('');
+  const fire = ch.key && g.streak?.current && ch.key === dayKey(new Date()) ? ` · 🔥 ${g.streak.current}` : '';
+  return [`Viaggi · ${ch.key ? `Daily ${ch.key}` : ch.name}${fire}`,
     `${stars} ${s.points} pts`, `${fmtDur(s.hours * 60)} · ${money(s.spent)} · 🎫 ${s.ticketsDone}/${s.tickets.length}`, route].join('\n');
 }
 
@@ -1027,6 +1123,7 @@ function freeEndSheet() {
     ${entry}
     ${list.length ? `<h3 class="how">Best times</h3><ol class="times">${timeRows(list, ui.saved)}</ol>` : ''}
     <div class="page grid small">${G.stampCities(g).map((id) => stampHTML(id)).join('')}</div>
+    ${newInPassport()}
     <ul class="log">${logItems()}</ul>
     <div class="row-btns"><button class="btn" data-act="again">Play again</button></div>`;
 }
@@ -1038,9 +1135,13 @@ function endSheet() {
   const got = ch.targets.filter((t) => g.collected.includes(t)).length;
   const sub = s.won && ch.training ? 'You know the board, the stamps and the clock. Real journeys add bonus tickets, strikes and storms.' : s.won ? `${ch.name} complete.` : `${got} of ${ch.targets.length} stamps collected.`;
   const star = (on) => `<span class="${on ? 'on' : ''}">★</span>`;
-  const best = ch.key && store.get(`tg-daily-${ch.key}`);
+  const best = ch.key && journal.dailies[ch.key];
+  const today = ch.key === dayKey(new Date());
+  const daily = ch.key ? `<div class="streakbox"><b>🔥 ${g.streak?.current ?? 0}</b><span>${today
+    ? `day streak${g.streak?.best ? ` · best ${g.streak.best}` : ''}<br><small>${s.won ? 'Come back tomorrow to keep it going.' : 'Only a completed daily challenge counts towards your streak.'}</small>`
+    : 'Archive day: replays do not count towards your streak.'}</span></div>` : '';
   return `
-    <h2>${title}</h2>${g.over === 'broke' ? brokeHTML() : ''}<p>${sub}</p>
+    <h2>${title}</h2>${g.over === 'broke' ? brokeHTML() : ''}<p>${sub}</p>${daily}
     <div class="stars">${star(s.won)}${star(s.thrift)}${star(s.speed)}<b>${s.points}<small>points</small></b></div>
     <ul class="checks">
       <li class="${s.won ? 'on' : ''}">★ Every stamp, home inside ${ch.hours}h</li>
@@ -1054,6 +1155,7 @@ function endSheet() {
       <div><small>${best ? 'Today’s best' : 'Nights'}</small><b>${best ? best.points : g.nights}</b></div>
     </div>
     <div class="page grid small">${G.stampCities(g).map((id) => stampHTML(id)).join('')}</div>
+    ${newInPassport()}
     <ul class="log">${logItems()}</ul>
     <div class="row-btns">
       <button class="btn ghost" data-act="share">Copy result</button>
@@ -1062,6 +1164,58 @@ function endSheet() {
 }
 
 // ------------------------------------------------------------------ flow
+
+// ------------------------------------------------------------------ journal
+
+// Notes a feat and tells the player the first time it is earned.
+function feat(id) {
+  if (earn(journal, id, Date.now())) {
+    const f = FEATS.find((x) => x.id === id);
+    g.newFeats = [...(g.newFeats || []), id];
+    toast(`Special stamp: ${f.icon} ${f.name}`, 'good');
+  }
+}
+
+function journalStamp(cityId, stampedAt) {
+  const c = cityById(cityId);
+  if (recordStamp(journal, c, g.stampAt[cityId], g.stampVia[cityId], g.challenge.name)) g.newStamps = [...(g.newStamps || []), cityId];
+  const m = local(c.tz, stampedAt).minutes;
+  if (m >= 22 * 60 || m < 5 * 60) feat('nightowl');
+  if (countries(journal, cityById).size >= 10) feat('tencountries');
+  saveJournal(journal);
+}
+
+function journalLeg(row, out) {
+  const { leg } = row;
+  const t = journal.totals;
+  t[leg.mode]++;
+  t.km += Math.round(leg.km);
+  if (leg.berth) t.onBoard++;
+  if (row.tight) feat('run');
+  if (row.divertTo) feat('diverted');
+  if (leg.berth && leg.sleeper) feat('sleeper');
+  if (leg.berth && leg.mode === 'ferry') feat('ferrynight');
+  saveJournal(journal);
+}
+
+// Called once when a journey ends, whatever the outcome.
+function journalEnd() {
+  if (g.journaled) return;
+  g.journaled = true;
+  const s = G.score(g), ch = g.challenge, t = journal.totals;
+  t.journeys++;
+  t.hotels += g.hotels;
+  if (s.won) t.wins++;
+  if (s.won && s.stars === 3 && !ch.untimed) feat('fullhouse');
+  if (s.won && g.spent <= ch.budget * 0.6) feat('shoestring');
+  if (ch.key && !ch.untimed) {
+    const before = streak(journal).current;
+    recordDaily(journal, ch.key, { won: s.won, points: s.points, stars: s.stars, hours: s.hours, spent: s.spent, onDay: ch.key === dayKey(new Date()) });
+    g.streak = streak(journal);
+    if (g.streak.current >= 7 && before < 7) feat('streak7');
+  }
+  saveJournal(journal);
+}
 
 function toast(text, kind = '') {
   const el = document.createElement('div');
@@ -1083,16 +1237,13 @@ function afterMove(notes = [], modal = null) {
   // Arriving late with a stamp to collect: let the player get it before the hotel takes over.
   const stampFirst = !G.visitPlan(g).why;
   ui.modal = g.over ? 'end' : modal || (G.isNight(g) && !stampFirst ? 'night' : null);
-  if (g.over && g.challenge.key && !g.challenge.untimed) {
-    const s = G.score(g), k = `tg-daily-${g.challenge.key}`, old = store.get(k);
-    if (!old || s.points > old.points) store.set(k, { points: s.points, stars: s.stars });
-  }
+  if (g.over) journalEnd();
   render();
   if (!g.over) { if (routeCity()) fitRoutes(); else frame(); }
 }
 
-function start() {
-  const base = ALL_CHALLENGES.find((c) => c.id === ui.challenge), free = ui.mode === 'free';
+function start(base = ALL_CHALLENGES.find((c) => c.id === ui.challenge)) {
+  const free = ui.mode === 'free';
   const ch = free ? { ...base, untimed: true } : base;
   world = createWorld(EUROPE, ch.modes, ch);
   showNetwork();
@@ -1153,13 +1304,21 @@ async function go(legId, flex = false, credit = 0, confirmed = false) {
     { padding: 90, maxZoom: 6, duration: 500 });
   await travel(from, to, row);
   const out = G.book(g, row, { flex, credit });
+  journalLeg(row, out);
   ui.left = out.skipped;
   afterMove(out.notes, out.skipped && !gentle() ? 'left' : null);
 }
 
 const actions = {
   pick: (id) => { ui.challenge = id; },
-  start,
+  start: () => start(),
+  mypassport: () => { journal = loadJournal(); ui.modal = 'mypassport'; },
+  archive: () => { ui.modal = 'archive'; },
+  playday: (key) => {
+    const [y, m, d] = key.split('-').map(Number);
+    ui.mode = 'race';
+    start(dailyChallenge(createWorld(EUROPE), new Date(y, m - 1, d, 12)));
+  },
   keep: (i) => { i = +i; ui.keep = ui.keep.includes(i) ? ui.keep.filter((x) => x !== i) : [...ui.keep, i].sort(); },
   depart,
   again: () => { g = null; ui.modal = 'start'; popup?.remove(); $('toasts').innerHTML = ''; },
@@ -1189,7 +1348,9 @@ const actions = {
   refund: () => { G.refund(g, ui.missed.out.credit); ui.modal = G.isNight(g) && G.visitPlan(g).why ? 'night' : null; },
   visit: () => {
     ui.stamped = g.city;
-    afterMove(G.visit(g), 'stamp');
+    const at = g.clock, notes = G.visit(g);
+    journalStamp(ui.stamped, at);
+    afterMove(notes, 'stamp');
   },
   night: () => { ui.modal = 'night'; },
   sleep: () => { const c = G.here(g); G.sleep(g); afterMove([`Good morning from ${c.name}. It is 06:00.`]); },
@@ -1199,14 +1360,14 @@ const actions = {
   log: () => { ui.modal = 'log'; },
   close: () => { ui.modal = ['stamp', 'missed', 'left'].includes(ui.modal) && G.isNight(g) && G.visitPlan(g).why ? 'night' : null; },
   menu: () => { popup?.remove(); ui.modal = 'menu'; },
-  quit: () => { g.over = 'quit'; ui.modal = 'end'; $('toasts').innerHTML = ''; },
+  quit: () => { g.over = 'quit'; journalEnd(); ui.modal = 'end'; $('toasts').innerHTML = ''; },
   share: async (_, el) => {
     try { await navigator.clipboard.writeText(shareText(G.score(g))); el.textContent = 'Copied ✓'; }
     catch { el.textContent = 'Copy not allowed here'; }
   },
 };
 
-const SELF_RENDERING = ['start', 'train', 'depart', 'go', 'goflex', 'rebook', 'leaveanyway', 'visit', 'sleep', 'share'];
+const SELF_RENDERING = ['start', 'playday', 'train', 'depart', 'go', 'goflex', 'rebook', 'leaveanyway', 'visit', 'sleep', 'share'];
 
 document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]');
